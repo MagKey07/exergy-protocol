@@ -1,0 +1,33 @@
+{
+  "name": "@exergy/oracle-simulator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mock oracle pipeline for Exergy Protocol MVP. Simulates Battery BMS -> Edge Device (HSM) -> VPP Cloud -> OracleRouter on Arbitrum Sepolia.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "dist/index.js",
+  "bin": {
+    "exergy-oracle-sim": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "demo:fleet": "ts-node scripts/demo-vpp-fleet.ts",
+    "lint:types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "dotenv": "^16.4.5",
+    "ethers": "^6.13.4",
+    "winston": "^3.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.4"
+  }
+}

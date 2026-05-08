@@ -1,0 +1,106 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Exergy Dashboard — design tokens.
+ * Dark-default. Single accent (institutional green). No neon, no rainbow.
+ * Spacing and number-density are inspired by Stripe + Etherscan.
+ */
+
+@layer base {
+  :root,
+  .dark {
+    --bg: 0 0% 4%;            /* #0a0a0a */
+    --surface: 0 0% 6.5%;     /* card background */
+    --surface-2: 0 0% 9.5%;   /* hover / nested */
+    --border: 0 0% 14%;
+    --fg: 0 0% 98%;
+    --fg-muted: 0 0% 70%;
+    --fg-subtle: 0 0% 50%;
+
+    --accent: 152 56% 50%;     /* mint-green, NOT crypto-lime */
+    --accent-dim: 152 30% 28%;
+    --accent-fg: 0 0% 4%;
+
+    --warn: 38 92% 60%;
+    --danger: 0 72% 56%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-bg text-fg font-sans;
+    font-feature-settings: "cv11", "ss01", "ss03";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Numbers — tabular figures for alignment in tables and stats */
+  .num,
+  table,
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  /* Subtle card outline used across pages — no glow, no shadow. */
+  .panel {
+    @apply rounded-lg border border-border bg-surface;
+  }
+
+  /* Hairline divider matching panel borders */
+  .hairline {
+    @apply border-t border-border;
+  }
+
+  /* Stat tile used on Overview / MyVPP */
+  .stat-label {
+    @apply text-xs uppercase tracking-[0.14em] text-fg-subtle;
+  }
+  .stat-value {
+    @apply font-mono text-stat tabular-nums text-fg;
+  }
+  .stat-hero {
+    @apply font-mono text-hero tabular-nums text-fg;
+  }
+
+  /* Live-pulse dot for "epoch ticking" */
+  .live-dot {
+    @apply inline-block h-1.5 w-1.5 rounded-full bg-accent animate-pulse-soft;
+  }
+}
+
+/* Recharts tooltip cleanup — institutional, no chartjunk. */
+.recharts-default-tooltip {
+  background-color: hsl(var(--surface)) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  border-radius: 8px !important;
+  font-size: 12px !important;
+  padding: 8px 10px !important;
+}
+.recharts-tooltip-label {
+  color: hsl(var(--fg-muted)) !important;
+  font-weight: 500 !important;
+  margin-bottom: 4px !important;
+}
+.recharts-cartesian-axis-tick-value {
+  fill: hsl(var(--fg-subtle)) !important;
+  font-size: 11px !important;
+}
+
+/* RainbowKit overrides — match dashboard chrome */
+[data-rk] {
+  --rk-fonts-body: "Inter", system-ui, sans-serif;
+  --rk-radii-modal: 12px;
+  --rk-radii-modalMobile: 12px;
+}
