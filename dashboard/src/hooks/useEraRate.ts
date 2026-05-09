@@ -4,7 +4,7 @@ import { mintingEngineAbi, HALVING_SCHEDULE } from "@/lib/contracts";
 import { contractAddresses } from "@/wagmi";
 
 /**
- * Reads `getCurrentEra()` and `getCurrentRate()` in a single multicall.
+ * Reads `currentEra()` and `currentMintRateWeiPerKwh()` in a single multicall.
  *
  * Era rate halves every 1M tokens minted (Technical_Blueprint §5).
  * The rate is 1e18-scaled tokens-per-kWh:
@@ -36,12 +36,12 @@ export function useEraRate(): {
       {
         address: contractAddresses.mintingEngine,
         abi: mintingEngineAbi,
-        functionName: "getCurrentEra",
+        functionName: "currentEra",
       },
       {
         address: contractAddresses.mintingEngine,
         abi: mintingEngineAbi,
-        functionName: "getCurrentRate",
+        functionName: "currentMintRateWeiPerKwh",
       },
     ],
     query: {

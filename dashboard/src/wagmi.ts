@@ -2,16 +2,33 @@ import { getDefaultConfig } from "@rainbow-me/rainbowkit";
 import { arbitrumSepolia } from "wagmi/chains";
 import { http } from "wagmi";
 import type { Address } from "viem";
+import { defineChain } from "viem";
 
 import { env } from "@/lib/env";
 
 /**
+ * Local Hardhat chain (chainId 31337). Used for in-process / persistent
+ * `npx hardhat node` development. Removed when migrating to Sepolia.
+ */
+export const hardhatLocal = defineChain({
+  id: 31337,
+  name: "Hardhat Local",
+  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  rpcUrls: {
+    default: { http: ["http://127.0.0.1:8545"] },
+    public: { http: ["http://127.0.0.1:8545"] },
+  },
+});
+
+const useLocal =
+  import.meta.env.VITE_USE_LOCAL === "true" ||
+  env.arbitrumSepoliaRpc.includes("127.0.0.1") ||
+  env.arbitrumSepoliaRpc.includes("localhost");
+
+const ACTIVE = useLocal ? hardhatLocal : arbitrumSepolia;
+
+/**
  * Wagmi + RainbowKit config.
- *
- * Phase 0 lives entirely on Arbitrum Sepolia. Production / Phase 2 will add
- * arbitrum mainnet to the chains array; nothing else in the dashboard should
- * have to change because all reads use `useReadContract` against the contract
- * addresses below, which are env-driven.
  */
 export const wagmiConfig = getDefaultConfig({
   appName: "Exergy Protocol",
@@ -19,19 +36,14 @@ export const wagmiConfig = getDefaultConfig({
     "Energy-backed monetary settlement layer. Operator + observer dashboard.",
   appUrl: "https://exergy.protocol",
   projectId: env.walletConnectProjectId || "exergy-dev-no-wc",
-  chains: [arbitrumSepolia],
+  chains: [ACTIVE],
   transports: {
-    [arbitrumSepolia.id]: http(env.arbitrumSepoliaRpc),
+    [ACTIVE.id]: http(env.arbitrumSepoliaRpc),
   },
   ssr: false,
 });
 
-/**
- * Phase 0 deployment is single-network. Whenever a hook needs the active
- * chain, it should read this constant rather than hard-coding the id, so
- * adding mainnet later is a one-file change.
- */
-export const ACTIVE_CHAIN = arbitrumSepolia;
+export const ACTIVE_CHAIN = ACTIVE;
 
 export interface ContractAddresses {
   xrgyToken: Address;

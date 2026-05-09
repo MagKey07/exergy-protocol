@@ -98,14 +98,14 @@ export const xrgyTokenAbi = [
 export const mintingEngineAbi = [
   {
     type: "function",
-    name: "getCurrentEra",
+    name: "currentEra",
     stateMutability: "view",
     inputs: [],
     outputs: [{ name: "", type: "uint256" }],
   },
   {
     type: "function",
-    name: "getCurrentRate",
+    name: "currentMintRateWeiPerKwh",
     stateMutability: "view",
     // Rate scaled 1e18 (1.0 token/kWh in Era 0 = 1e18)
     inputs: [],
