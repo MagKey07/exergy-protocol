@@ -138,3 +138,89 @@ The remaining 21 test failures show that **test agent guessed Settlement/Governa
 
 Day 1 hardening pass: LICENSE, public README, MAINNET_HARDENING.md created. Open-source readiness gap closed (D-12 + Section 3 items 1, 2, 8). Pre-mainnet admin removal locked into checklist for future sprints.
 
+
+## 2026-05-09 — Day 2: Chainlink External Adapter layer
+
+**Sprint goal:** Close CONCEPT_AUDIT §3 item 4 — insert the Chainlink External
+Adapter between the VPP Cloud and `OracleRouter`, replacing the Phase 0
+shortcut where the simulator submitted directly to the contract.
+
+### What landed
+
+1. **New package: `MVP/chainlink-adapter/`** — Node.js TypeScript HTTP service.
+   Pipeline: off-chain dual-sig verifier → 3-of-5 simulated Chainlink node
+   consensus + mock DSO cross-check (≤ 20% discrepancy threshold) → on-chain
+   relay via `CHAINLINK_RELAYER_ROLE`. Express on `:9000`, Commander CLI
+   (`start` / `health` / `tx-status`), Winston logging. Open-source MIT,
+   structured to mirror `oracle-simulator/`.
+
+2. **`OracleRouter.sol` updated.** New role `CHAINLINK_RELAYER_ROLE`,
+   `submitMeasurement` is now `onlyRole(CHAINLINK_RELAYER_ROLE)` ON TOP of
+   the existing dual-signature verification (defence-in-depth — adapter
+   verifies off-chain, contract verifies again on-chain). New
+   `setRelayer(address)` admin function (single-address binding, must
+   timelock on mainnet per `MAINNET_HARDENING.md`). Initializer grants
+   bootstrap relayer = admin so existing tests + scripts keep working.
+
+3. **`oracle-simulator/` rewired.** New `AdapterSubmitter` class POSTs to
+   the adapter's `/submit` endpoint. Default mode is V1 (adapter); legacy
+   V0 (direct contract call) remains via `SUBMIT_MODE_DIRECT=1`. CLI and
+   demo script auto-pick mode from env. New env var
+   `CHAINLINK_ADAPTER_URL=http://localhost:9000`.
+
+4. **`docs/PROTOCOL_SPEC.md` extended.** New section
+   "## V1 — Chainlink Layer (additive)" documents the HTTP `/submit`
+   contract, JSON wire format, immutable consensus constants (3-of-5,
+   2000 bps), DSO mock + Phase 1 real-DSO migration, open-ecosystem
+   requirements for alternative adapters. V0 (direct submission) stays
+   supported indefinitely.
+
+5. **`docs/08_chainlink_adapter_build_log.md`** — full build log with
+   8 architecture decisions and 6 open questions for next sprint.
+
+### Concept-fidelity guards (held)
+
+- **No admin overrides.** Adapter pipeline is deterministic. No
+  "approve anyway" flag, no trusted-VPP allow-list.
+- **Constants are constants.** `CONSENSUS_THRESHOLD = 3`,
+  `CONSENSUS_NODE_COUNT = 5`, `DSO_DISCREPANCY_THRESHOLD_BPS = 2000`
+  are `as const` exports. Not env-tunable. Not CLI-flag-tunable.
+- **Stateless adapter.** No registry, no allow-list — those live on
+  chain. Adapter is replaceable / horizontally scalable.
+- **Defence-in-depth, not gatekeeping.** Contract repeats signature
+  verification regardless of which relayer called. Compromised adapter
+  key cannot mint without valid dual signature.
+- **No new admin functions on the contract.** `setRelayer` is a
+  single-address binding (does not gate any new mutable parameter).
+
+### Files changed (summary)
+
+- New: `MVP/chainlink-adapter/{package.json,tsconfig.json,.env.example,.gitignore,README.md}`,
+  `src/{types,logger,oracle-router.abi,verifier,dso-mock,consensus,relayer,server,index}.ts`,
+  `test/{verifier,dso-mock,consensus}.test.ts`.
+- Modified: `contracts/OracleRouter.sol`,
+  `contracts/interfaces/IOracleRouter.sol`,
+  `scripts/deploy.ts`, `oracle-simulator/package.json`,
+  `oracle-simulator/.env.example`, `oracle-simulator/src/submitter.ts`,
+  `oracle-simulator/src/index.ts`,
+  `oracle-simulator/scripts/demo-vpp-fleet.ts`,
+  `docs/PROTOCOL_SPEC.md`.
+- New docs: `docs/08_chainlink_adapter_build_log.md`.
+
+### Open questions / next sprint
+
+1. Real Chainlink Functions / Aggregator integration (cost, gas, sub-fee).
+2. DSO API choice — likely per-region (ENTSO-E for EU, NREL for US).
+3. Multi-adapter governance — quorum-of-adapters vs single+failover.
+4. Testnet (Arbitrum Sepolia) re-deploy + end-to-end verification.
+5. Cycle-rate enforcement (CONCEPT_AUDIT D-7) — natural fit for the
+   adapter; needs per-device history (likely Redis off-chain).
+6. Adapter persistence — adding history re-introduces a state surface;
+   needs a concept review before implementing.
+
+### How to demo locally
+
+See `docs/08_chainlink_adapter_build_log.md` "How to run end-to-end".
+TL;DR: `hardhat node` + `hardhat run scripts/deploy.ts` +
+`chainlink-adapter/npm run dev` + `oracle-simulator/npm run demo:fleet`.
+

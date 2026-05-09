@@ -60,9 +60,14 @@ interface IOracleRouter {
     );
     /// @notice The MintingEngine address bound to this router.
     event MintingEngineSet(address indexed mintingEngine);
+    /// @notice The CHAINLINK_RELAYER_ROLE was granted to a new relayer
+    /// (typically the deployed Chainlink External Adapter address).
+    event ChainlinkRelayerSet(address indexed relayer);
 
     /// @notice Caller is not allowed to register devices.
     error NotDeviceRegistrar();
+    /// @notice Caller is not the registered Chainlink relayer.
+    error NotChainlinkRelayer();
     /// @notice Device id is already registered.
     error DeviceAlreadyRegistered(bytes32 deviceId);
     /// @notice Device id is not registered.
@@ -103,6 +108,12 @@ interface IOracleRouter {
 
     /// @notice One-time wiring of the MintingEngine address.
     function setMintingEngine(address mintingEngine) external;
+
+    /// @notice Grant CHAINLINK_RELAYER_ROLE to a new relayer (e.g. a freshly
+    /// deployed Chainlink External Adapter). Admin-only. Production deploys
+    /// must route this through the same TimelockController as UPGRADER_ROLE
+    /// (see MAINNET_HARDENING.md).
+    function setRelayer(address relayer) external;
 
     /// @notice Lookup a registered device record.
     function getDevice(bytes32 deviceId) external view returns (DeviceRecord memory);

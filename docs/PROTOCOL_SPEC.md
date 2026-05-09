@@ -212,3 +212,174 @@ versioned by deployment; the dialect tag travels in this spec.
 - Implementers are encouraged to commit a recorded test vector
   (input packet, expected packetHash, expected vppPayloadHash) to their own
   test suites so silent drift is impossible.
+
+---
+
+## V1 — Chainlink Layer (additive)
+
+> **Note:** The dialect version table in §7 tracks the *signature scheme*
+> (EIP-191 prefix → EIP-712 typed data → ZK). This section describes the
+> *transport pipeline* (Chainlink External Adapter), which is orthogonal to
+> the signature dialect. The on-chain signature recovery rules in §3-§5 apply
+> identically to V0 and V1 transport — the adapter does not change a single
+> byte of the digest.
+
+### V1.1 — Pipeline diagram
+
+```
+[VPP Cloud]
+    │  HTTPS POST /submit { packet, deviceSignature, vppSignature, requestId? }
+    ▼
+[Chainlink External Adapter]                    ← MVP/chainlink-adapter/
+    │  1. Off-chain dual-signature verification (mirrors §3-§4 byte-for-byte)
+    │  2. 3-of-5 simulated Chainlink node consensus, each runs a DSO check
+    │  3. DSO cross-reference: ≤ 20% discrepancy threshold per node
+    │  4. If accepted: relay on-chain via CHAINLINK_RELAYER_ROLE wallet
+    ▼
+[OracleRouter.submitMeasurement(packet, deviceSig, vppSig)]
+    │  - onlyRole(CHAINLINK_RELAYER_ROLE) gate
+    │  - Re-runs §3-§5 dual-signature verification on chain (defence-in-depth)
+    │  - Replay protection (packetHash consumed)
+    │  - Forwards to MintingEngine
+    ▼
+[MintingEngine] (no changes — same epoch/halving math)
+```
+
+V0 (direct submission) remains supported for regression and bootstrap. The
+default flow for new deployments is V1 — the V0 oracle simulator and the
+adapter both produce byte-identical packets (same dialect, same signatures);
+only the transport between them differs.
+
+### V1.2 — HTTP API contract: `POST /submit`
+
+Request (Content-Type: `application/json`):
+
+```jsonc
+{
+  "packet": {
+    "deviceId": "0x...32-byte hex...",
+    "kwhAmount":         "5000000000000000000",  // decimal string (uint256)
+    "timestamp":         "1700000000",           // decimal string (uint64)
+    "storageCapacity":   "13500000000000000000", // decimal string (uint256)
+    "chargeLevelPercent": 65,                    // 0..100
+    "sourceType":         0,                     // 0..3 (see §2)
+    "cumulativeCycles":   12                     // uint32
+  },
+  "deviceSignature": "0x...65-byte hex r||s||v...",
+  "vppSignature":    "0x...65-byte hex r||s||v...",
+  "requestId":       "optional-correlation-id"
+}
+```
+
+Numeric fields whose Solidity type is `uint256`/`uint64` are encoded as
+**decimal strings** in JSON (no native bigint). The adapter re-encodes them
+as ABI-correct integers for `keccak256(abi.encode(...))` — the digest matches
+§3 byte-for-byte.
+
+Response (Content-Type: `application/json`):
+
+```jsonc
+{
+  "ok":        true,                 // false if rejected
+  "txHash":    "0x...",              // present iff ok=true
+  "blockNumber": 1234567,            // present iff ok=true
+  "stage":     "verify"|"consensus"|"relay",  // present iff ok=false
+  "reason":    "human readable",     // present iff ok=false
+  "consensus": {
+    "accepted":         true,
+    "acceptCount":      5,           // 0..5
+    "rejectCount":      0,
+    "threshold":        3,           // hard-coded constant — see V1.3
+    "maxDiscrepancyBps": 312         // 10000 = 100%
+  },
+  "requestId": "echo-of-request"
+}
+```
+
+Status codes:
+
+| Status | Meaning                                                    |
+|-------:|------------------------------------------------------------|
+| 200    | Accepted. Packet relayed on chain. `txHash` populated.     |
+| 400    | Malformed JSON / missing field / type error.               |
+| 422    | Verification or consensus rejected. `stage` says where.    |
+| 502    | Upstream RPC / contract revert during relay.               |
+
+### V1.3 — Consensus rule (canonical, immutable)
+
+```
+const CONSENSUS_NODE_COUNT       = 5
+const CONSENSUS_THRESHOLD        = 3      // 3-of-5
+const DSO_DISCREPANCY_THRESHOLD  = 2000   // basis points = 20%
+```
+
+These are HARD-CODED CONSTANTS in the reference adapter
+(`MVP/chainlink-adapter/src/types.ts`). They are NOT runtime-tunable —
+exposing them as config would re-introduce the "centralized human review"
+risk that CORE_THESIS §5.5 explicitly forbids. Any alternative adapter
+implementation MUST use the same constants to remain protocol-compliant.
+
+For each packet the adapter runs N=5 independent simulated Chainlink-node
+DSO checks. A node accepts iff:
+
+```
+discrepancyBps = abs(expectedKwh - reportedKwh) * 10000 / max(reportedKwh, 1)
+discrepancyBps ≤ 2000  // 20%
+```
+
+The packet is forwarded on-chain only when ≥3 of the 5 nodes accept.
+There is no admin override path. There is no "trusted VPP" allow-list
+that skips the DSO check.
+
+### V1.4 — DSO contract
+
+| Phase   | Status      | Implementation                                          |
+|---------|-------------|---------------------------------------------------------|
+| Phase 0 | active      | Mock — `expectedKwh = reportedKwh * uniform(0.95,1.05)` per node, no real grid query. |
+| Phase 1 | next sprint | Real Chainlink External Adapter integration with a DSO API (e.g. ENTSO-E for EU partners, NREL feed for US). |
+
+The mock is deterministic when seeded with a fixed RNG (see test suite). A
+real DSO adapter will replace the noise with an actual API call and the rest
+of the pipeline (consensus, relayer, contract) does not change.
+
+### V1.5 — Implementation requirements (open ecosystem)
+
+The protocol is open. Any developer can run their own adapter — like SMTP,
+Gmail and Outlook are both valid email clients. To remain protocol-compliant
+an alternative adapter MUST:
+
+1. Hold `CHAINLINK_RELAYER_ROLE` on the deployed `OracleRouter` (granted by
+   the same governance path as `UPGRADER_ROLE`).
+2. Verify the dual signature off-chain using the EXACT byte sequence
+   documented in §3-§4 (no field re-ordering, no extra fields in the inner
+   `abi.encode`).
+3. Run a DSO cross-reference and a 3-of-5 consensus before relaying.
+4. NOT expose runtime mutable controls for any of the consensus or DSO
+   thresholds. They are protocol constants.
+5. NOT refuse to relay packets that pass all three checks (refusal is a
+   liveness DOS — the protocol responds by allowing OTHER adapters to be
+   granted the role).
+6. Be stateless with respect to the device registry — that lives on chain.
+
+The contract enforces (1) by role gate and (2) by re-running the on-chain
+recovery. (3)-(6) are off-chain conventions that adapters follow voluntarily;
+violating them breaks the open ecosystem but cannot mint tokens, because the
+contract will revert any packet whose dual signature doesn't recover to a
+registered (device, vpp) pair.
+
+### V1.6 — Versioning
+
+The transport-layer dialect tag is `EXERGY_CHAINLINK_ADAPTER_V1` (separate
+from `EXERGY_SIGNATURE_DIALECT_V0` which tracks the signature scheme).
+Bumps to V1 indicate either:
+
+  - a change in the HTTP wire format (request/response JSON shape), or
+  - a change in the consensus / DSO thresholds (would require a hard fork of
+    the spec and a coordinated re-deploy).
+
+The reference adapter exposes `GET /version` to surface its dialect tag for
+ops dashboards.
+
+V0 (direct contract submission, no adapter) remains supported indefinitely as
+a fallback. A deployment is V1 if its `CHAINLINK_RELAYER_ROLE` is held only by
+adapters and not by direct EOAs (per `MAINNET_HARDENING.md`).

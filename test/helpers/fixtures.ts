@@ -162,6 +162,11 @@ export async function deployFullSystem(): Promise<DeployedSystem> {
     .connect(governor)
     .setMintingEngine(await mintingEngine.getAddress());
 
+  // Grant CHAINLINK_RELAYER_ROLE to deployer for test-suite convenience.
+  // Production deploys use the real Chainlink Adapter address only (per MAINNET_HARDENING.md).
+  const RELAYER_ROLE = await oracleRouter.CHAINLINK_RELAYER_ROLE();
+  await oracleRouter.connect(governor).grantRole(RELAYER_ROLE, await deployer.getAddress());
+
   return {
     deployer,
     governor,

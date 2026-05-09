@@ -13,9 +13,9 @@ import { Command } from 'commander';
 import { BatterySim } from './battery-sim';
 import { EdgeDevice } from './edge-device';
 import { VppCloud, DeviceRegistry } from './vpp-cloud';
-import { Submitter } from './submitter';
+import { Submitter, AdapterSubmitter } from './submitter';
 import { deviceFleet, deviceIdFromLabel, fromPrivateKey, fromSeed, type Keypair } from './keypair';
-import { SourceType } from './types';
+import { SourceType, type DualSignedPacket, type SubmissionResult } from './types';
 import { logger, child } from './logger';
 
 const log = child('cli');
@@ -29,10 +29,12 @@ interface EnvCfg {
   dryRun: boolean;
   maxRetries: number;
   retryBackoffMs: number;
+  adapterUrl: string;
+  forceDirect: boolean;
 }
 
 function readEnv(): EnvCfg {
-  const rpcUrl = process.env.ARBITRUM_SEPOLIA_RPC_URL ?? '';
+  const rpcUrl = process.env.ARBITRUM_SEPOLIA_RPC_URL ?? process.env.ARBITRUM_RPC_URL ?? '';
   const oracleRouterAddress = process.env.ORACLE_ROUTER_ADDRESS ?? '';
   const submitterPrivateKey = process.env.SUBMITTER_PRIVATE_KEY ?? '';
   const vppCloudPrivateKey = process.env.VPP_CLOUD_PRIVATE_KEY ?? submitterPrivateKey;
@@ -40,10 +42,67 @@ function readEnv(): EnvCfg {
   const dryRun = process.env.DRY_RUN === '1';
   const maxRetries = Number(process.env.SUBMIT_MAX_RETRIES ?? 3);
   const retryBackoffMs = Number(process.env.SUBMIT_RETRY_BACKOFF_MS ?? 1500);
-  return { rpcUrl, oracleRouterAddress, submitterPrivateKey, vppCloudPrivateKey, devicePrivateKey, dryRun, maxRetries, retryBackoffMs };
+  const adapterUrl = process.env.CHAINLINK_ADAPTER_URL ?? '';
+  const forceDirect = process.env.SUBMIT_MODE_DIRECT === '1';
+  return {
+    rpcUrl,
+    oracleRouterAddress,
+    submitterPrivateKey,
+    vppCloudPrivateKey,
+    devicePrivateKey,
+    dryRun,
+    maxRetries,
+    retryBackoffMs,
+    adapterUrl,
+    forceDirect,
+  };
 }
 
-function buildSubmitter(env: EnvCfg): Submitter {
+interface UnifiedSubmitter {
+  readonly mode: 'adapter' | 'direct';
+  submit(packet: DualSignedPacket): Promise<SubmissionResult>;
+}
+
+/**
+ * Pick adapter (V1) or direct (V0 legacy) submitter based on env. The adapter
+ * path is the production-shaped flow per Technical_Blueprint.md §3 and the
+ * default for new sprint extensions; direct mode stays for regression /
+ * bootstrap when the adapter isn't running.
+ */
+function buildSubmitter(env: EnvCfg): UnifiedSubmitter | null {
+  if (env.adapterUrl && !env.forceDirect) {
+    log.info('submission mode: adapter (V1)', { adapterUrl: env.adapterUrl });
+    const inner = new AdapterSubmitter({
+      adapterUrl: env.adapterUrl,
+      dryRun: env.dryRun,
+      maxRetries: env.maxRetries,
+      retryBackoffMs: env.retryBackoffMs,
+    });
+    return { mode: 'adapter', submit: (p) => inner.submit(p) };
+  }
+
+  if (env.oracleRouterAddress.startsWith('0x') && env.oracleRouterAddress.replace(/0+$/, '').length > 2) {
+    log.warn('submission mode: direct (LEGACY V0) — bypassing Chainlink adapter');
+    const inner = new Submitter({
+      rpcUrl: env.rpcUrl,
+      oracleRouterAddress: env.oracleRouterAddress,
+      submitterPrivateKey: env.submitterPrivateKey,
+      dryRun: env.dryRun,
+      maxRetries: env.maxRetries,
+      retryBackoffMs: env.retryBackoffMs,
+    });
+    return { mode: 'direct', submit: (p) => inner.submit(p) };
+  }
+
+  return null;
+}
+
+/**
+ * Direct-only submitter for register-device — that endpoint is admin-only on
+ * the contract and cannot be relayed through the adapter (the adapter only
+ * forwards `submitMeasurement` calls).
+ */
+function buildDirectSubmitter(env: EnvCfg): Submitter {
   return new Submitter({
     rpcUrl: env.rpcUrl,
     oracleRouterAddress: env.oracleRouterAddress,
@@ -112,11 +171,9 @@ program
     log.info('fleet built', { vpp: opts.vpp, devices: fleet.length });
 
     const cloud = new VppCloud(vppKeypair, registry);
-    const submitter = env.oracleRouterAddress.replace(/0+$/, '').length > 2
-      ? buildSubmitter(env)
-      : null;
+    const submitter = buildSubmitter(env);
     if (!submitter) {
-      log.warn('ORACLE_ROUTER_ADDRESS not set — running in offline mode (no on-chain submit)');
+      log.warn('no submission target — set CHAINLINK_ADAPTER_URL (V1) or ORACLE_ROUTER_ADDRESS (V0 legacy) to enable on-chain push');
     }
 
     // Build per-device simulators + edge devices.
@@ -250,12 +307,12 @@ program
       vppSig: dual.vppSignature,
     });
 
-    if (env.oracleRouterAddress.replace(/0+$/, '').length > 2) {
-      const submitter = buildSubmitter(env);
+    const submitter = buildSubmitter(env);
+    if (submitter) {
       const result = await submitter.submit(dual);
-      log.info('submission', result);
+      log.info('submission', { mode: submitter.mode, ...result });
     } else {
-      log.warn('ORACLE_ROUTER_ADDRESS not set — packet built but not submitted');
+      log.warn('no submission target — set CHAINLINK_ADAPTER_URL (V1) or ORACLE_ROUTER_ADDRESS (V0 legacy) to enable submission');
     }
   });
 
@@ -276,7 +333,9 @@ program
       vpp: vppKey.address,
       pubKeyHash: deviceKey.pubKeyHash,
     });
-    const submitter = buildSubmitter(env);
+    // registerDevice is admin-only on the contract — must go direct to RPC,
+    // not through the Chainlink adapter (which only relays submitMeasurement).
+    const submitter = buildDirectSubmitter(env);
     const result = await submitter.registerDevice(deviceId, vppKey.address, deviceKey.pubKeyHash);
     log.info('registered', result);
   });

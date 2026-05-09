@@ -26,14 +26,25 @@ import {IMintingEngine} from "./interfaces/IMintingEngine.sol";
  *       of pubkeys without leaking them on-chain.)
  *
  *   2) `vppSignature` from the VPP cloud's secp256k1 key.
- *      The signature is over keccak256(abi.encode(packet, deviceSignature)),
+ *      The signature is over keccak256(abi.encode(packetHash, deviceSignature)),
  *      i.e. the VPP cloud explicitly co-signs the device's payload. The
  *      recovered address MUST equal the `vppAddress` registered for the device.
  *
  * Single-sig / mismatched-sig packets revert. There is no admin override.
  *
+ * @dev V1 Chainlink layer (additive — see docs/PROTOCOL_SPEC.md §V1):
+ *      `submitMeasurement` is also gated to `CHAINLINK_RELAYER_ROLE`. The
+ *      Chainlink External Adapter (running off-chain) holds this role and is
+ *      the only address allowed to relay packets on-chain. This is ADDITIVE
+ *      security — defence-in-depth — not a replacement for the dual-signature
+ *      check, which still runs on every submission. The adapter is one
+ *      implementation of the protocol; per CORE_THESIS "no centralized
+ *      software gatekeeping", anyone can run their own adapter and apply for
+ *      this role through governance (see PROTOCOL_SPEC.md §V1).
+ *
  * MVP scope: Chainlink External Adapter / DSO cross-validation is mocked
- * (see TESTNET notes). Phase 1 swaps it in transparently.
+ * (see chainlink-adapter/). Phase 1 swaps the mock for the real Chainlink
+ * Aggregator address transparently — same role, different implementation.
  */
 contract OracleRouter is
     IOracleRouter,
@@ -52,6 +63,9 @@ contract OracleRouter is
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     bytes32 public constant DEVICE_REGISTRAR_ROLE = keccak256("DEVICE_REGISTRAR_ROLE");
+    /// @notice Single-address binding for the Chainlink External Adapter that
+    /// is allowed to relay verified packets on-chain. See V1 in PROTOCOL_SPEC.md.
+    bytes32 public constant CHAINLINK_RELAYER_ROLE = keccak256("CHAINLINK_RELAYER_ROLE");
 
     // ---------------------------------------------------------------------
     // Constants
@@ -96,6 +110,14 @@ contract OracleRouter is
         _grantRole(UPGRADER_ROLE, admin);
         _grantRole(PAUSER_ROLE, admin);
         _grantRole(DEVICE_REGISTRAR_ROLE, admin);
+        // Bootstrap relayer = admin so existing deploy scripts, integration
+        // tests, and the V0 oracle-simulator (direct-submit mode) keep working
+        // out-of-the-box. Production deployments MUST grant CHAINLINK_RELAYER_ROLE
+        // to the Chainlink External Adapter address only and renounce the
+        // admin's relayer role through a TimelockController. See
+        // MAINNET_HARDENING.md.
+        _grantRole(CHAINLINK_RELAYER_ROLE, admin);
+        emit ChainlinkRelayerSet(admin);
     }
 
     // ---------------------------------------------------------------------
@@ -108,6 +130,20 @@ contract OracleRouter is
         if (address(mintingEngine) != address(0)) revert MintingEngineAlreadySet();
         mintingEngine = IMintingEngine(engine);
         emit MintingEngineSet(engine);
+    }
+
+    /// @inheritdoc IOracleRouter
+    /// @dev Single-address binding semantics: granting CHAINLINK_RELAYER_ROLE to
+    ///      a new address is the canonical way to migrate from the bootstrap
+    ///      relayer (testnet admin) to the production Chainlink Aggregator
+    ///      address. This function does NOT revoke the previous holder — admin
+    ///      must call AccessControl.revokeRole separately so the migration is
+    ///      explicit and visible. On mainnet, this MUST be timelocked per
+    ///      MAINNET_HARDENING.md (testnet acceptable as direct admin call).
+    function setRelayer(address relayer) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (relayer == address(0)) revert ZeroAddress();
+        _grantRole(CHAINLINK_RELAYER_ROLE, relayer);
+        emit ChainlinkRelayerSet(relayer);
     }
 
     // ---------------------------------------------------------------------
@@ -143,11 +179,19 @@ contract OracleRouter is
     // ---------------------------------------------------------------------
 
     /// @inheritdoc IOracleRouter
+    /// @dev Gated to CHAINLINK_RELAYER_ROLE on top of the dual-signature check.
+    ///      Defence-in-depth: the relayer (Chainlink External Adapter) has
+    ///      already verified the dual signatures off-chain and run the 3-of-5
+    ///      consensus + DSO cross-check, but the contract REPEATS the
+    ///      signature verification anyway. The role gate is additive security,
+    ///      not a replacement; if this role were granted to an attacker, they
+    ///      could only pass through packets that are ALREADY validly dual-signed
+    ///      by registered devices and VPPs.
     function submitMeasurement(
         MeasurementPacket calldata packet,
         bytes calldata deviceSignature,
         bytes calldata vppSignature
-    ) external override whenNotPaused {
+    ) external override whenNotPaused onlyRole(CHAINLINK_RELAYER_ROLE) {
         DeviceRecord memory rec = _devices[packet.deviceId];
         if (rec.vppAddress == address(0)) revert DeviceNotRegistered(packet.deviceId);
         if (!rec.active) revert DeviceInactive(packet.deviceId);

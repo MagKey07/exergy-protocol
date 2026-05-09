@@ -89,6 +89,17 @@ async function main() {
   console.log("      MintingEngine @", mintingAddr);
 
   // ---------- 3. OracleRouter (UUPS proxy) -------------------------------
+  // NOTE: OracleRouter.initialize bootstraps `governor` with CHAINLINK_RELAYER_ROLE
+  // so existing tests, scripts, and the V0 oracle-simulator (direct submit) keep
+  // working on testnet. PRODUCTION deploys MUST run a follow-up step:
+  //
+  //   1. Deploy the Chainlink External Adapter (chainlink-adapter/) and obtain
+  //      its on-chain submitter address.
+  //   2. Call oracleRouter.setRelayer(<adapter address>) — grants role.
+  //   3. oracleRouter.revokeRole(CHAINLINK_RELAYER_ROLE, governor) — removes the
+  //      bootstrap binding so only the adapter can relay.
+  //   4. Both calls must be routed through the production TimelockController,
+  //      see MAINNET_HARDENING.md.
   console.log("[3/5] Deploying OracleRouter (UUPS)...");
   const OracleFactory = await ethers.getContractFactory("OracleRouter");
   const oracleRouter = await upgrades.deployProxy(
@@ -99,6 +110,8 @@ async function main() {
   await oracleRouter.waitForDeployment();
   const oracleAddr = await oracleRouter.getAddress();
   console.log("      OracleRouter @", oracleAddr);
+  console.log("      bootstrap CHAINLINK_RELAYER_ROLE -> ", governor);
+  console.log("      (testnet only — see MAINNET_HARDENING.md before mainnet)");
 
   // ---------- 4. Settlement (UUPS proxy) ---------------------------------
   console.log("[4/5] Deploying Settlement (UUPS)...");

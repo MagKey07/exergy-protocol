@@ -21,9 +21,9 @@ import 'dotenv/config';
 import { BatterySim } from '../src/battery-sim';
 import { EdgeDevice } from '../src/edge-device';
 import { VppCloud, DeviceRegistry } from '../src/vpp-cloud';
-import { Submitter } from '../src/submitter';
+import { Submitter, AdapterSubmitter } from '../src/submitter';
 import { deviceFleet, fromSeed } from '../src/keypair';
-import { SourceType } from '../src/types';
+import { SourceType, type DualSignedPacket, type SubmissionResult } from '../src/types';
 import { child, logger } from '../src/logger';
 
 const log = child('demo-fleet');
@@ -97,19 +97,48 @@ async function buildRunner(spec: VppSpec, attackerLabel: string | null): Promise
   return { vppLabel: spec.label, cloud: new VppCloud(vppKey, registry), devices };
 }
 
-async function main(): Promise<void> {
+interface DemoSubmitter {
+  readonly mode: 'adapter' | 'direct';
+  submit(packet: DualSignedPacket): Promise<SubmissionResult>;
+}
+
+function buildDemoSubmitter(): DemoSubmitter | null {
+  const adapterUrl = process.env.CHAINLINK_ADAPTER_URL ?? '';
+  const forceDirect = process.env.SUBMIT_MODE_DIRECT === '1';
   const oracleAddr = process.env.ORACLE_ROUTER_ADDRESS ?? '';
-  const submitter = oracleAddr.startsWith('0x') && oracleAddr.replace(/0+$/, '').length > 2
-    ? new Submitter({
-      rpcUrl: process.env.ARBITRUM_SEPOLIA_RPC_URL ?? '',
+  const dryRun = process.env.DRY_RUN === '1';
+  const maxRetries = Number(process.env.SUBMIT_MAX_RETRIES ?? 3);
+  const retryBackoffMs = Number(process.env.SUBMIT_RETRY_BACKOFF_MS ?? 1500);
+
+  // V1 default — route through adapter. Falls back to legacy direct submission
+  // if CHAINLINK_ADAPTER_URL is unset OR SUBMIT_MODE_DIRECT=1.
+  if (adapterUrl && !forceDirect) {
+    log.info('submission mode: adapter (V1)', { adapterUrl });
+    const inner = new AdapterSubmitter({ adapterUrl, dryRun, maxRetries, retryBackoffMs });
+    return { mode: 'adapter', submit: (p) => inner.submit(p) };
+  }
+
+  if (oracleAddr.startsWith('0x') && oracleAddr.replace(/0+$/, '').length > 2) {
+    log.warn('submission mode: direct (LEGACY V0) — bypassing Chainlink adapter');
+    const inner = new Submitter({
+      rpcUrl: process.env.ARBITRUM_SEPOLIA_RPC_URL ?? process.env.ARBITRUM_RPC_URL ?? '',
       oracleRouterAddress: oracleAddr,
       submitterPrivateKey: process.env.SUBMITTER_PRIVATE_KEY ?? '',
-      dryRun: process.env.DRY_RUN === '1',
-      maxRetries: Number(process.env.SUBMIT_MAX_RETRIES ?? 3),
-      retryBackoffMs: Number(process.env.SUBMIT_RETRY_BACKOFF_MS ?? 1500),
-    })
-    : null;
-  if (!submitter) log.warn('offline mode — packets will be built and signed but not submitted');
+      dryRun,
+      maxRetries,
+      retryBackoffMs,
+    });
+    return { mode: 'direct', submit: (p) => inner.submit(p) };
+  }
+
+  return null;
+}
+
+async function main(): Promise<void> {
+  const submitter = buildDemoSubmitter();
+  if (!submitter) {
+    log.warn('offline mode — packets will be built and signed but not submitted (set CHAINLINK_ADAPTER_URL or ORACLE_ROUTER_ADDRESS)');
+  }
 
   // Pick the first device in vpp-tx as the attacker for testing rejection paths.
   const runners = await Promise.all(SPECS.map((s, i) => buildRunner(s, i === 0 ? `${s.label}:device-000` : null)));
