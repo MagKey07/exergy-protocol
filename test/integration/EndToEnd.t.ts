@@ -98,7 +98,7 @@ describe("Integration: end-to-end happy path", () => {
     await token.connect(alice).approve(await settlement.getAddress(), settleGross);
     await settlement
       .connect(alice)
-      .settle(await alice.getAddress(), await bob.getAddress(), settleGross);
+      .settleEnergy(await alice.getAddress(), await bob.getAddress(), settleGross);
 
     const settleFee = (settleGross * SETTLEMENT_FEE_BPS) / BPS_DENOMINATOR;
     const settleNet = settleGross - settleFee;

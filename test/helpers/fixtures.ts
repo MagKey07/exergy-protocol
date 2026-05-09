@@ -95,7 +95,7 @@ export async function deployFullSystem(): Promise<DeployedSystem> {
 
   // 1. XRGYToken — non-upgradeable per §2.1.
   const TokenFactory = await ethers.getContractFactory("XRGYToken");
-  const token = await TokenFactory.deploy("Exergy", "XRGY");
+  const token = await TokenFactory.deploy("Exergy", "XRGY", await deployer.getAddress());
   await token.waitForDeployment();
 
   // 2. MintingEngine — UUPS upgradeable per §2.5.
@@ -105,8 +105,7 @@ export async function deployFullSystem(): Promise<DeployedSystem> {
     [
       await token.getAddress(),
       await governor.getAddress(),
-      // genesisTimestamp = 0 means "use block.timestamp at init"
-      0,
+      ethers.parseEther("1000000"),
     ],
     { kind: "uups" }
   );
@@ -126,9 +125,9 @@ export async function deployFullSystem(): Promise<DeployedSystem> {
   const settlement = await upgrades.deployProxy(
     SettlementFactory,
     [
+      await governor.getAddress(),
       await token.getAddress(),
       await mintingEngine.getAddress(),
-      await governor.getAddress(),
       {
         treasury: await treasury.getAddress(),
         team: await team.getAddress(),
@@ -146,9 +145,6 @@ export async function deployFullSystem(): Promise<DeployedSystem> {
     GovFactory,
     [
       await governor.getAddress(),
-      await oracleRouter.getAddress(),
-      await mintingEngine.getAddress(),
-      await settlement.getAddress(),
     ],
     { kind: "uups" }
   );
@@ -197,7 +193,7 @@ export async function deployTokenOnly() {
   const [deployer, fakeEngine, alice, bob, attacker] = await ethers.getSigners();
 
   const TokenFactory = await ethers.getContractFactory("XRGYToken");
-  const token = await TokenFactory.deploy("Exergy", "XRGY");
+  const token = await TokenFactory.deploy("Exergy", "XRGY", await deployer.getAddress());
   await token.waitForDeployment();
 
   await token.connect(deployer).setMintingEngine(await fakeEngine.getAddress());

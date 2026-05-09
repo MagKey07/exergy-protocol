@@ -69,7 +69,7 @@ describe("XRGYToken", () => {
     it("rejects zero address as MintingEngine", async () => {
       // Re-deploy a fresh token so we can attempt the first wiring with zero.
       const TokenFactory = await ethers.getContractFactory("XRGYToken");
-      const fresh = await TokenFactory.deploy("Exergy", "XRGY");
+      const fresh = await TokenFactory.deploy("Exergy", "XRGY", await (await ethers.getSigners())[0].getAddress());
       await fresh.waitForDeployment();
       await expect(fresh.setMintingEngine(ethers.ZeroAddress)).to.be.revertedWithCustomError(
         fresh,

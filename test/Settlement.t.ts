@@ -72,7 +72,7 @@ describe("Settlement", () => {
       const net = grossAmount - fee;
       const split = splitFee(fee);
 
-      await settlement.connect(alice).settle(aliceAddr, bobAddr, grossAmount);
+      await settlement.connect(alice).settleEnergy(aliceAddr, bobAddr, grossAmount);
 
       expect(await token.balanceOf(aliceAddr)).to.equal(0n);
       expect(await token.balanceOf(bobAddr)).to.equal(net);
@@ -89,7 +89,7 @@ describe("Settlement", () => {
       await seedTokens(sys, await alice.getAddress(), 7777n);
       const gross = 7777n * ONE_TOKEN;
       await token.connect(alice).approve(await settlement.getAddress(), gross);
-      await settlement.connect(alice).settle(await alice.getAddress(), await bob.getAddress(), gross);
+      await settlement.connect(alice).settleEnergy(await alice.getAddress(), await bob.getAddress(), gross);
 
       const fee = (gross * SETTLEMENT_FEE_BPS) / BPS_DENOMINATOR;
       const sum =
@@ -106,7 +106,7 @@ describe("Settlement", () => {
     it("reverts if sender has insufficient balance", async () => {
       const { settlement, alice, bob } = await loadFixture(deployFullSystem);
       await expect(
-        settlement.connect(alice).settle(await alice.getAddress(), await bob.getAddress(), ONE_TOKEN)
+        settlement.connect(alice).settleEnergy(await alice.getAddress(), await bob.getAddress(), ONE_TOKEN)
       ).to.be.reverted;
     });
 
@@ -115,7 +115,7 @@ describe("Settlement", () => {
       const { settlement, alice, bob } = sys;
       await seedTokens(sys, await alice.getAddress(), 100n);
       await expect(
-        settlement.connect(alice).settle(await alice.getAddress(), await bob.getAddress(), 50n * ONE_TOKEN)
+        settlement.connect(alice).settleEnergy(await alice.getAddress(), await bob.getAddress(), 50n * ONE_TOKEN)
       ).to.be.reverted;
     });
   });
@@ -163,7 +163,7 @@ describe("Settlement", () => {
     it("only governance can update fee receivers", async () => {
       const { settlement, attacker, alice } = await loadFixture(deployFullSystem);
       await expect(
-        settlement.connect(attacker).setFeeReceivers({
+        settlement.connect(attacker).setFeeRecipients({
           treasury: await alice.getAddress(),
           team: await alice.getAddress(),
           ecosystem: await alice.getAddress(),
@@ -184,7 +184,7 @@ describe("Settlement", () => {
       await token.connect(alice).approve(await settlement.getAddress(), 500n * ONE_TOKEN);
       await settlement
         .connect(alice)
-        .settle(await alice.getAddress(), await bob.getAddress(), 500n * ONE_TOKEN);
+        .settleEnergy(await alice.getAddress(), await bob.getAddress(), 500n * ONE_TOKEN);
 
       // Run a redemption.
       await token.connect(alice).approve(await settlement.getAddress(), 200n * ONE_TOKEN);

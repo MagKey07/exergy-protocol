@@ -3,7 +3,7 @@
 pragma solidity ^0.8.24;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import {ERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
+import {ERC20Permit, IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IXRGYToken} from "./interfaces/IXRGYToken.sol";
 
@@ -66,5 +66,18 @@ contract XRGYToken is ERC20, ERC20Permit, Ownable, IXRGYToken {
     function mint(address to, uint256 amount) external override {
         if (msg.sender != mintingEngine) revert NotMintingEngine();
         _mint(to, amount);
+    }
+
+    /**
+     * @dev OZ 5.x requires explicit override for `nonces` because it is declared in both
+     *      ERC20Permit (via Nonces) and IERC20Permit. Routes to ERC20Permit's implementation.
+     */
+    function nonces(address owner)
+        public
+        view
+        override(ERC20Permit, IERC20Permit)
+        returns (uint256)
+    {
+        return super.nonces(owner);
     }
 }

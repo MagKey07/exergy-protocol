@@ -71,7 +71,7 @@ async function main() {
   // ---------- 1. XRGYToken (non-upgradeable) ------------------------------
   console.log("[1/5] Deploying XRGYToken...");
   const TokenFactory = await ethers.getContractFactory("XRGYToken");
-  const token = await TokenFactory.deploy("Exergy", "XRGY");
+  const token = await TokenFactory.deploy("Exergy", "XRGY", deployer.address);
   await token.waitForDeployment();
   const tokenAddr = await token.getAddress();
   console.log("      XRGYToken @", tokenAddr);
@@ -81,7 +81,7 @@ async function main() {
   const MintingFactory = await ethers.getContractFactory("MintingEngine");
   const mintingEngine = await upgrades.deployProxy(
     MintingFactory,
-    [tokenAddr, governor, 0],
+    [tokenAddr, governor, ethers.parseEther("1000000")],
     { kind: "uups" }
   );
   await mintingEngine.waitForDeployment();
@@ -106,9 +106,9 @@ async function main() {
   const settlement = await upgrades.deployProxy(
     SettlementFactory,
     [
+      governor,
       tokenAddr,
       mintingAddr,
-      governor,
       { treasury, team, ecosystem, insurance },
     ],
     { kind: "uups" }
@@ -122,7 +122,7 @@ async function main() {
   const GovFactory = await ethers.getContractFactory("ProtocolGovernance");
   const governance = await upgrades.deployProxy(
     GovFactory,
-    [governor, oracleAddr, mintingAddr, settlementAddr],
+    [governor],
     { kind: "uups" }
   );
   await governance.waitForDeployment();

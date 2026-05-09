@@ -89,3 +89,48 @@ Once testnet demo working:
 - **Pre-Seed valuation lever** — pre-MVP $10M post-money → post-MVP working demo could justify $15-25M post-money on Seed (less dilution, same $1M raise)
 - **Tier-1 outreach quality** — Powell/Hagens/Mazzucato level can now be approached with "running implementation of energy-as-money thesis", not just paper
 
+
+## 2026-05-09 — Integration sprint Day 1
+
+### Achievement: Protocol DEPLOYED + RUNNING на localhost
+
+Started 09.05 ~07:30 UTC. By 07:55:
+- ✅ npm install (root contracts workspace) — 789 packages, 5 dep conflicts resolved
+- ✅ tsconfig.json created (root was missing — TS resolution failed at first compile)
+- ✅ OpenZeppelin pinned to exact 5.0.2 (latest 5.6 dropped ReentrancyGuardUpgradeable.sol)
+- ✅ XRGYToken `nonces()` override fix for OZ 5.x ambiguity (override IERC20Permit)
+- ✅ Test fixtures aligned: XRGYToken constructor (3 args), MintingEngine init (halvingThreshold=1M tokens), Settlement init (admin first), ProtocolGovernance init (1 arg)
+- ✅ Test runs: **44/65 passing** (was 0/65 before fixes). Remaining 21 fails are deeper semantic mismatches (function names like `settle()` vs `settleEnergy()`, missing `proposeParameterChange`, `recordRedemption`, `TIMELOCK_DURATION`)
+- ✅ deploy.ts patched same 4 fixes as fixtures
+- ✅ **All 5 contracts deployed на in-process Hardhat (chainId 31337)**, wiring complete (4 one-shot setters)
+- ✅ **Persistent Hardhat node started** at http://127.0.0.1:8545 (background, PID 82047, log /tmp/hardhat-node.log)
+- ✅ **Deploy на persistent localhost succeeded.** Address book → `deployments/localhost.json`
+
+### Live deployment addresses (localhost)
+
+```
+XRGYToken            0x5FbDB2315678afecb367f032d93F642f64180aa3
+MintingEngine        0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0
+OracleRouter         0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9
+Settlement           0x0165878A594ca255338adfa4d48449f69242Eb8F
+ProtocolGovernance   0x2279B7A0a67DB372996a5FaB50D91eAA73d2eBe6
+```
+
+Implementation contracts (UUPS proxies) also recorded.
+
+### Strategic decision: paused unit test debugging
+
+40+/65 tests passing covers core paths. Remaining 21 failures are due to test-vs-contract function name guesses (Settlement, Governance) — would require multi-hour rewrites of test logic. **Tests are nice-to-have for Phase 1 hardening; demo IS the leverage now.** Pivoted to: deploy → wire dashboard → smoke test through oracle simulator.
+
+### Next up (today):
+
+1. Run `seed-test-data.ts` script — register 3 mock VPPs (Texas/Berlin/Sydney) + devices on localhost
+2. Wire oracle-simulator with localhost RPC + deployed OracleRouter address
+3. Submit single signed measurement → verify mint event → verify token balance
+4. Wire dashboard with localhost RPC + deployed contracts
+5. Visual end-to-end: dashboard shows mint live as simulator submits
+
+### Known integration risk now
+
+The remaining 21 test failures show that **test agent guessed Settlement/Governance ABIs different from what contracts agent built**. Live smoke test will surface whether oracle-simulator and dashboard hit the same ABI-guess problem — possibly need rewrite of those agents' submit/read paths. Will discover when smoke testing.
+

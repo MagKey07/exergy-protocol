@@ -65,10 +65,10 @@ describe("ProtocolGovernance", () => {
     it("can be paused and unpaused by governor", async () => {
       const { governance, governor } = await loadFixture(deployFullSystem);
 
-      await expect(governance.connect(governor).pause()).to.emit(governance, "Paused");
+      await expect(governance.connect(governor).pauseProtocol()).to.emit(governance, "Paused");
       expect(await governance.paused()).to.equal(true);
 
-      await expect(governance.connect(governor).unpause()).to.emit(governance, "Unpaused");
+      await expect(governance.connect(governor).unpauseProtocol()).to.emit(governance, "Unpaused");
       expect(await governance.paused()).to.equal(false);
     });
 
