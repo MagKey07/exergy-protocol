@@ -41,9 +41,10 @@ const VPPS: { label: string; region: string; sources: number[] }[] = [
 ];
 
 function devicePubKeyHash(privateKey: string): string {
+  // Contract truth: keccak256(abi.encodePacked(20-byte address)).
+  // Earlier impl hashed uncompressed pubkey — corrected after D-1 audit.
   const wallet = new ethers.Wallet(privateKey);
-  const stripped = "0x" + wallet.signingKey.publicKey.slice(4);
-  return ethers.keccak256(stripped);
+  return ethers.solidityPackedKeccak256(["address"], [wallet.address]);
 }
 
 async function main() {
@@ -72,10 +73,11 @@ async function main() {
     console.log(`  cloud signer: ${vppCloud.address}`);
 
     // Register VPP in governance.
-    const metadataHash = ethers.id(v.label);
-    const tx = await governance.registerVPP(vppCloud.address, metadataHash);
+    // Contract: registerVPP(bytes32 vppId, address operatorAddress)
+    const vppId = ethers.id(v.label);
+    const tx = await governance.registerVPP(vppId, vppCloud.address);
     await tx.wait();
-    console.log(`  ✓ registered with governance`);
+    console.log(`  ✓ registered with governance (vppId: ${vppId.slice(0, 14)}…)`);
 
     const devices: SeedDevice[] = [];
     for (let i = 0; i < 5; i++) {

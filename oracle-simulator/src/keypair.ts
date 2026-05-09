@@ -7,7 +7,7 @@
  * that re-running the simulator produces stable identities — easier to register
  * once on-chain and re-use across runs.
  */
-import { Wallet, HDNodeWallet, Mnemonic, getBytes, hexlify, keccak256, toUtf8Bytes, ethers } from 'ethers';
+import { Wallet, HDNodeWallet, Mnemonic, keccak256, toUtf8Bytes, ethers } from 'ethers';
 
 /**
  * A keyring binding a private key to its derived address + public key hash.
