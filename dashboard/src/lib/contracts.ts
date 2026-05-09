@@ -267,7 +267,12 @@ export const oracleRouterAbi = [
 ] as const satisfies Abi;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Settlement — P2P + cross-VPP transfers with protocol fee
+// Settlement — intra-VPP + cross-VPP transfers with protocol fee
+//
+// Mirrors contracts/Settlement.sol verbatim. Fee semantics: the settlement
+// fee (`settlementFeeBps`, default 25 = 0.25%) is paid ON TOP of the principal
+// by the payer. The recipient receives the full `tokenAmount`. The payer must
+// approve `tokenAmount + fee` to Settlement before calling.
 // ─────────────────────────────────────────────────────────────────────────────
 export const settlementAbi = [
   {
@@ -279,37 +284,82 @@ export const settlementAbi = [
   },
   {
     type: "function",
-    name: "settle",
+    name: "mintingFeeBps",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "feeRecipients",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [
+      {
+        name: "",
+        type: "tuple",
+        components: [
+          { name: "treasury", type: "address" },
+          { name: "team", type: "address" },
+          { name: "ecosystem", type: "address" },
+          { name: "insurance", type: "address" },
+        ],
+      },
+    ],
+  },
+  {
+    type: "function",
+    name: "settleEnergy",
     stateMutability: "nonpayable",
     inputs: [
-      { name: "to", type: "address" },
-      { name: "amount", type: "uint256" },
-      { name: "memoHash", type: "bytes32" }, // hashed energy-settlement reference
+      { name: "provider", type: "address" },
+      { name: "tokenAmount", type: "uint256" },
+      { name: "kwhConsumed", type: "uint256" },
     ],
     outputs: [],
   },
   {
     type: "function",
-    name: "settleCrossVPP",
+    name: "crossVPPSettle",
     stateMutability: "nonpayable",
     inputs: [
-      { name: "toVPP", type: "address" },
-      { name: "to", type: "address" },
-      { name: "amount", type: "uint256" },
-      { name: "memoHash", type: "bytes32" },
+      { name: "receiver", type: "address" },
+      { name: "counterpartyVPPId", type: "bytes32" },
+      { name: "tokenAmount", type: "uint256" },
     ],
     outputs: [],
   },
+  // Events — match contracts/interfaces/ISettlement.sol verbatim.
   {
     type: "event",
-    name: "Settled",
+    name: "EnergySettled",
     inputs: [
-      { name: "from", type: "address", indexed: true },
-      { name: "to", type: "address", indexed: true },
-      { name: "amount", type: "uint256", indexed: false },
-      { name: "fee", type: "uint256", indexed: false },
-      { name: "kind", type: "uint8", indexed: false }, // 0 = P2P intra-VPP, 1 = cross-VPP
-      { name: "memoHash", type: "bytes32", indexed: false },
+      { name: "payer", type: "address", indexed: true },
+      { name: "provider", type: "address", indexed: true },
+      { name: "tokensTransferred", type: "uint256", indexed: false },
+      { name: "kwhConsumed", type: "uint256", indexed: false },
+      { name: "feePaid", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "CrossVPPSettled",
+    inputs: [
+      { name: "payer", type: "address", indexed: true },
+      { name: "receiver", type: "address", indexed: true },
+      { name: "counterpartyVPPId", type: "bytes32", indexed: true },
+      { name: "tokensTransferred", type: "uint256", indexed: false },
+      { name: "feePaid", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "FeesDistributed",
+    inputs: [
+      { name: "treasuryAmt", type: "uint256", indexed: false },
+      { name: "teamAmt", type: "uint256", indexed: false },
+      { name: "ecosystemAmt", type: "uint256", indexed: false },
+      { name: "insuranceAmt", type: "uint256", indexed: false },
     ],
   },
 ] as const satisfies Abi;

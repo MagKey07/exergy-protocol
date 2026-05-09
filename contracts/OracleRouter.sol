@@ -181,8 +181,18 @@ contract OracleRouter is
         _processed[packetHash] = true;
 
         // Forward to MintingEngine. Engine returns minted amount (used for analytics only here).
+        // Pass `cumulativeCycles` and `storageCapacity` through so the engine can run its
+        // autonomous Proof-of-Wear check (Blueprint §5.6). Anomaly LOGIC lives in the
+        // engine — not here — per CONCEPT_AUDIT D-7. This router does NOT short-circuit
+        // those checks; it just shuttles the signed packet fields through.
         uint256 epoch = mintingEngine.currentEpoch();
-        mintingEngine.commitVerifiedEnergy(packet.deviceId, rec.vppAddress, packet.kwhAmount);
+        mintingEngine.commitVerifiedEnergy(
+            packet.deviceId,
+            rec.vppAddress,
+            packet.kwhAmount,
+            packet.cumulativeCycles,
+            packet.storageCapacity
+        );
 
         emit MeasurementVerified(packet.deviceId, rec.vppAddress, packet.kwhAmount, packet.timestamp, epoch);
     }

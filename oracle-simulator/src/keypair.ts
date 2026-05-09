@@ -7,7 +7,7 @@
  * that re-running the simulator produces stable identities — easier to register
  * once on-chain and re-use across runs.
  */
-import { Wallet, HDNodeWallet, Mnemonic, getBytes, hexlify, keccak256, toUtf8Bytes } from 'ethers';
+import { Wallet, HDNodeWallet, Mnemonic, getBytes, hexlify, keccak256, toUtf8Bytes, ethers } from 'ethers';
 
 /**
  * A keyring binding a private key to its derived address + public key hash.
@@ -96,18 +96,14 @@ function wrap(wallet: Wallet | HDNodeWallet): Keypair {
 }
 
 /**
- * Compute keccak256(uncompressedPubKey[1:]) — the same hash Ethereum uses to
- * derive an address (lower 20 bytes). We expose the full 32-byte hash for the
- * registry, since OracleRouter stores `bytes32 pubKeyHash`.
+ * CONTRACT TRUTH: OracleRouter compares keccak256(abi.encodePacked(recoveredAddress))
+ * against `bytes32 devicePubKeyHash`. So we hash the 20-byte ADDRESS, not the
+ * uncompressed pubkey. (Earlier impl hashed the pubkey — produced a different
+ * digest and contract reverted with InvalidDeviceSignature.)
  */
 function pubKeyHashFromWallet(w: Wallet): string {
-  // ethers v6: signingKey.publicKey returns 0x04 || X || Y (uncompressed, 65 bytes hex).
-  const uncompressed = w.signingKey.publicKey;
-  const bytes = getBytes(uncompressed);
-  if (bytes.length !== 65 || bytes[0] !== 0x04) {
-    throw new Error(`Unexpected pubkey format: length=${bytes.length} prefix=${bytes[0]?.toString(16)}`);
-  }
-  return keccak256(hexlify(bytes.slice(1)));
+  // ethers v6: solidityPackedKeccak256(["address"], [addr]) === keccak256(abi.encodePacked(addr))
+  return ethers.solidityPackedKeccak256(["address"], [w.address]);
 }
 
 /**

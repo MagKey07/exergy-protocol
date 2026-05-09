@@ -134,3 +134,7 @@ Implementation contracts (UUPS proxies) also recorded.
 
 The remaining 21 test failures show that **test agent guessed Settlement/Governance ABIs different from what contracts agent built**. Live smoke test will surface whether oracle-simulator and dashboard hit the same ABI-guess problem — possibly need rewrite of those agents' submit/read paths. Will discover when smoke testing.
 
+### 2026-05-09 — Day 1 hardening pass
+
+Day 1 hardening pass: LICENSE, public README, MAINNET_HARDENING.md created. Open-source readiness gap closed (D-12 + Section 3 items 1, 2, 8). Pre-mainnet admin removal locked into checklist for future sprints.
+

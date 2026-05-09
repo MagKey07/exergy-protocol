@@ -21,22 +21,60 @@ import { child } from './logger';
 const log = child('vpp-cloud');
 
 /**
- * Field types for the VPP-level digest. We bind:
+ * Field types for the VPP-level digest — CANONICAL per `OracleRouter.sol:175`:
+ *
+ *   bytes32 vppPayloadHash = keccak256(abi.encode(packetHash, deviceSignature));
+ *
+ * We bind:
  *  - the device digest (so the device's exact reading is committed to),
- *  - the device signature (so a swap of signatures is detected),
- *  - the VPP cloud's address (so a different VPP can't forward our packet).
+ *  - the device signature (so a swap of signatures is detected).
+ *
+ * NOTE on `vppAddress`: an earlier draft of this file included `vppAddress` as a
+ * third field. The contract does NOT include it (it relies on the device→VPP
+ * binding stored in the on-chain registry instead). Including it here broke
+ * interop — exactly the "centralized software gatekeeping" risk CORE_THESIS
+ * warns against. The canonical encoding is `[bytes32, bytes]`. See
+ * `docs/PROTOCOL_SPEC.md` for the full dialect (EXERGY_SIGNATURE_DIALECT_V0).
  */
-const VPP_DIGEST_TYPES = ['bytes32', 'bytes', 'address'] as const;
+const VPP_DIGEST_TYPES = ['bytes32', 'bytes'] as const;
 
-/** Compute the bytes32 digest the VPP cloud signs. */
-export function buildVppDigest(packet: SignedDevicePacket, vppAddress: string): string {
+/**
+ * Compute the bytes32 digest the VPP cloud signs.
+ *
+ * Reference implementation that any third-party VPP-cloud signer can call
+ * (or re-implement byte-for-byte) — see `docs/PROTOCOL_SPEC.md`.
+ *
+ * @param packet The device-signed packet (already carries `deviceSignature`).
+ * @returns The bytes32 digest, ready to be passed to `wallet.signMessage(getBytes(...))`.
+ */
+export function buildVppDigest(packet: SignedDevicePacket): string {
   const deviceDigest = buildDeviceDigest(packet);
   const encoded = AbiCoder.defaultAbiCoder().encode([...VPP_DIGEST_TYPES], [
     deviceDigest,
     packet.deviceSignature,
-    vppAddress,
   ]);
   return keccak256(encoded);
+}
+
+/**
+ * Reference TS cosignature builder — pure function, no class state.
+ *
+ * Exposed so other VPP-cloud implementations can consume this as a
+ * REFERENCE (not a shim). Re-export-friendly: a Gmail/Outlook-style
+ * ecosystem of cloud signers can either import this directly or
+ * mirror the byte sequence in their own runtime.
+ *
+ * @param packet  Device-signed packet (must carry `deviceSignature`).
+ * @param sign    Async signing function — e.g. `wallet.signMessage(bytes)`.
+ *                Must apply EIP-191 prefix (matches OracleRouter.sol:176).
+ */
+export async function cosignReference(
+  packet: SignedDevicePacket,
+  sign: (digestBytes: Uint8Array) => Promise<string>,
+): Promise<{ vppDigest: string; vppSignature: string }> {
+  const vppDigest = buildVppDigest(packet);
+  const vppSignature = await sign(getBytes(vppDigest));
+  return { vppDigest, vppSignature };
 }
 
 /**
@@ -106,7 +144,7 @@ export class VppCloud {
       );
     }
 
-    const vppDigest = buildVppDigest(packet, this.address);
+    const vppDigest = buildVppDigest(packet);
     const vppSignature = await this.wallet.signMessage(getBytes(vppDigest));
 
     log.debug('cosigned', {

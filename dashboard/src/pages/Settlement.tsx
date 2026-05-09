@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
-import { isAddress, parseUnits, keccak256, toHex, type Address } from "viem";
+import { isAddress, parseUnits, keccak256, toHex, type Address, type Hex } from "viem";
 
 import { PageHeader } from "@/components/PageHeader";
 import { ContractsBanner } from "@/components/ContractsBanner";
@@ -20,16 +20,23 @@ import { formatBps, formatToken, shortAddress } from "@/lib/utils";
  * P2P + cross-VPP settlement form.
  *
  * Two tabs:
- *  1. P2P (intra-VPP): operator pays a participant within their own VPP.
- *  2. Cross-VPP: operator A buys energy from VPP B, pays to participant of B.
+ *  1. P2P (intra-VPP): operator pays a participant within their own VPP via
+ *     `settleEnergy(provider, tokenAmount, kwhConsumed)`. We pass kwhConsumed
+ *     = 0 from this UI — pure token settlement without consumption-recording.
+ *     Operators that want to record consumption use the metering pipeline.
+ *  2. Cross-VPP: operator pays a participant of another VPP via
+ *     `crossVPPSettle(receiver, counterpartyVPPId, tokenAmount)`. The
+ *     counterparty VPP identifier (bytes32) is derived from the counterparty
+ *     VPP address entered in the form.
  *
- * Both flows hit Settlement.sol and apply the protocol fee (`settlementFeeBps`,
- * default 25 = 0.25%, distributed Treasury 40% / Team 20% / Ecosystem 25% / Insurance 15%
- * per Technical_Blueprint §2.4).
+ * Both flows apply the protocol settlement fee (`settlementFeeBps`,
+ * default 25 = 0.25%, distributed Treasury 40% / Team 20% / Ecosystem 25% /
+ * Insurance 15% per Technical_Blueprint §2.4). The fee is paid ON TOP of the
+ * principal: the recipient receives the full `tokenAmount` and the payer pays
+ * `tokenAmount + fee`. Approve `tokenAmount + fee` to Settlement before submit.
  *
- * Memo is hashed client-side — operators reference an off-chain energy
- * settlement record (e.g. a metering invoice) without putting personal data
- * on-chain.
+ * Memo is an off-chain note; the contract has no memo parameter, so it is
+ * never sent to chain. We still hash it locally for operator bookkeeping.
  */
 export function Settlement(): JSX.Element {
   const { address, isConnected } = useAccount();
@@ -71,7 +78,7 @@ export function Settlement(): JSX.Element {
       <PageHeader
         eyebrow="Settlement"
         title="Settle in $XRGY"
-        subtitle="Pay participants in the energy they helped store. Protocol fee 0.25% — Treasury 40% / Team 20% / Ecosystem 25% / Insurance 15%."
+        subtitle="Pay participants in the energy they helped store. Protocol fee 0.25% (paid on top of the principal) — Treasury 40% / Team 20% / Ecosystem 25% / Insurance 15%."
       />
 
       <ContractsBanner />
@@ -153,16 +160,28 @@ function SettlementForm({ kind, feeBps, balance }: SettlementFormProps): JSX.Ele
     return (amountWei * feeBps) / 10_000n;
   }, [amountWei, feeBps]);
 
-  const netToRecipient = amountWei !== undefined && feePreview !== undefined
-    ? amountWei - feePreview
+  // Fee is on top of the principal — payer pays principal + fee, recipient gets full principal.
+  const totalDebit = amountWei !== undefined && feePreview !== undefined
+    ? amountWei + feePreview
     : undefined;
 
-  const insufficient = balance !== undefined && amountWei !== undefined && balance < amountWei;
+  const insufficient = balance !== undefined && totalDebit !== undefined && balance < totalDebit;
 
-  const memoHash = useMemo<`0x${string}`>(() => {
-    if (!memo.trim()) return ("0x" + "0".repeat(64)) as `0x${string}`;
+  // Hashed locally for operator bookkeeping. NOT sent on-chain — Settlement.sol has no memo parameter.
+  const memoHash = useMemo<Hex>(() => {
+    if (!memo.trim()) return ("0x" + "0".repeat(64)) as Hex;
     return keccak256(toHex(memo));
   }, [memo]);
+
+  // Cross-VPP requires a bytes32 counterparty VPP identifier. Derive it deterministically
+  // from the counterparty VPP address entered in the form (keccak256 of the lower-cased addr).
+  // Off-chain registry can map this digest back to a human-readable VPP name.
+  const counterpartyVPPId = useMemo<Hex>(() => {
+    if (kind !== "cross" || !toVpp || !isAddress(toVpp)) {
+      return ("0x" + "0".repeat(64)) as Hex;
+    }
+    return keccak256(toHex(toVpp.toLowerCase()));
+  }, [kind, toVpp]);
 
   const { writeContract, data: txHash, isPending, error } = useWriteContract();
   const { isLoading: confirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
@@ -173,18 +192,23 @@ function SettlementForm({ kind, feeBps, balance }: SettlementFormProps): JSX.Ele
   const onSubmit = (): void => {
     if (!canSubmit || !amountWei) return;
     if (kind === "p2p") {
+      // settleEnergy(provider, tokenAmount, kwhConsumed). UI does pure token
+      // settlement — kwhConsumed = 0; consumption-recording is the metering
+      // pipeline's job, not this manual operator form.
       writeContract({
         address: contractAddresses.settlement,
         abi: settlementAbi,
-        functionName: "settle",
-        args: [to as Address, amountWei, memoHash],
+        functionName: "settleEnergy",
+        args: [to as Address, amountWei, 0n],
       });
     } else {
+      // crossVPPSettle(receiver, counterpartyVPPId, tokenAmount). Three args —
+      // no memoHash on-chain. The memo input is operator bookkeeping only.
       writeContract({
         address: contractAddresses.settlement,
         abi: settlementAbi,
-        functionName: "settleCrossVPP",
-        args: [toVpp as Address, to as Address, amountWei, memoHash],
+        functionName: "crossVPPSettle",
+        args: [to as Address, counterpartyVPPId, amountWei],
       });
     }
   };
@@ -231,7 +255,7 @@ function SettlementForm({ kind, feeBps, balance }: SettlementFormProps): JSX.Ele
           </div>
         </Field>
 
-        <Field label="Memo (optional)" hint="Hashed on-chain. Off-chain reference, e.g. invoice ID.">
+        <Field label="Memo (optional)" hint="Off-chain bookkeeping only — Settlement.sol has no memo parameter. Hashed locally for your records.">
           <Input
             placeholder="grid-bill-2026-05-08-meter-3142"
             value={memo}
@@ -249,24 +273,38 @@ function SettlementForm({ kind, feeBps, balance }: SettlementFormProps): JSX.Ele
           </Badge>
         </div>
 
-        <PreviewRow label="Send" value={amountWei !== undefined ? `${formatToken(amountWei)} XRGY` : "—"} />
         <PreviewRow
-          label={`Fee (${formatBps(feeBps)})`}
+          label="Recipient receives"
+          value={amountWei !== undefined ? `${formatToken(amountWei)} XRGY` : "—"}
+          emphasis
+        />
+        <PreviewRow
+          label={`Fee (${formatBps(feeBps)}, on top)`}
           value={feePreview !== undefined ? `${formatToken(feePreview)} XRGY` : "—"}
         />
         <div className="hairline" />
         <PreviewRow
-          label="Recipient receives"
-          value={netToRecipient !== undefined ? `${formatToken(netToRecipient)} XRGY` : "—"}
+          label="Total debited from you"
+          value={totalDebit !== undefined ? `${formatToken(totalDebit)} XRGY` : "—"}
           emphasis
         />
         <PreviewRow
-          label="Memo hash"
+          label="Memo hash (off-chain)"
           value={<span className="font-mono text-xs">{shortAddress(memoHash, 10, 8)}</span>}
         />
+        {kind === "cross" && (
+          <PreviewRow
+            label="Counterparty VPP id"
+            value={
+              <span className="font-mono text-xs">{shortAddress(counterpartyVPPId, 10, 8)}</span>
+            }
+          />
+        )}
 
         {insufficient && (
-          <div className="text-xs text-danger">Insufficient $XRGY balance.</div>
+          <div className="text-xs text-danger">
+            Insufficient $XRGY balance — fee is paid on top of the principal.
+          </div>
         )}
         {error && <div className="text-xs text-danger break-words">{(error as Error).message}</div>}
         {isSuccess && (

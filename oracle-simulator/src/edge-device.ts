@@ -9,17 +9,22 @@
  *  3. Sign the digest with the device's ECDSA secp256k1 key (HSM in real life).
  *  4. Emit a SignedDevicePacket ready for the VPP cloud to co-sign.
  *
- * On-chain verification expectation:
- *   bytes32 digest = keccak256(abi.encode(
- *       deviceId, kwhAmount, timestamp, storageCapacity,
- *       chargeLevelPercent, sourceType, cumulativeCycles));
- *   address signer = ECDSA.recover(MessageHashUtils.toEthSignedMessageHash(digest), sig);
+ * On-chain verification expectation (CANONICAL — see OracleRouter.sol:160-167):
+ *   bytes32 packetHash = keccak256(abi.encode(packet));     // packet is the full struct
+ *   bytes32 deviceDigest = MessageHashUtils.toEthSignedMessageHash(packetHash);
+ *   address signer = ECDSA.recover(deviceDigest, deviceSignature);
  *
- * We use the EIP-191 "\x19Ethereum Signed Message:\n32" prefix because that's
- * what ethers' Wallet.signMessage produces and what OpenZeppelin's
- * MessageHashUtils.toEthSignedMessageHash builds. If the smart-contracts agent
- * prefers raw-digest recovery (no EIP-191), they can flip the verifier to
- * ECDSA.recover(digest, sig) directly — see DEVICE_DIGEST_RAW below.
+ * Two equivalences that make the simulator's implementation correct:
+ *   (a) abi.encode(packet) == abi.encode(field1, field2, ..., fieldN)
+ *       when every field is static-size (no dynamic types). All MeasurementPacket
+ *       fields are static (bytes32, uint256, uint64, uint256, uint8, uint8, uint32),
+ *       so encoding the struct or its fields produces identical bytes.
+ *   (b) ethers.Wallet.signMessage(getBytes(hash)) prepends
+ *       "\x19Ethereum Signed Message:\n32" + hashBytes, then keccaks — exactly
+ *       what OpenZeppelin's MessageHashUtils.toEthSignedMessageHash produces.
+ *
+ * This is EXERGY_SIGNATURE_DIALECT_V0 (see docs/PROTOCOL_SPEC.md). Production
+ * may move to EIP-712 typed data; Phase 0 stays simple.
  */
 import { AbiCoder, getBytes, keccak256, type Wallet } from 'ethers';
 import type { BmsReading, SignedDevicePacket } from './types';
@@ -92,9 +97,10 @@ export class EdgeDevice {
   async sign(reading: BmsReading): Promise<SignedDevicePacket> {
     const digest = buildDeviceDigest(reading);
     // EIP-191: ethers v6 Wallet.signMessage prepends "\x19Ethereum Signed Message:\n32"
-    // to the *bytes* of the digest, then keccak256s. To make the on-chain
-    // verifier simple we pass raw digest bytes (not the hex string) so the
-    // length-prefix is "32" and OpenZeppelin's toEthSignedMessageHash matches.
+    // to the *bytes* of the digest, then keccak256s. We pass raw digest bytes
+    // (not the hex string) so the length-prefix is "32" and OpenZeppelin's
+    // MessageHashUtils.toEthSignedMessageHash matches byte-for-byte. This is
+    // the canonical dialect per OracleRouter.sol:166.
     const signature = await this.wallet.signMessage(getBytes(digest));
 
     log.debug('signed', {
@@ -109,9 +115,13 @@ export class EdgeDevice {
 }
 
 /**
- * Exposed for tests / smart-contracts agent: the raw (unprefixed) digest.
- * If the OracleRouter chooses NOT to apply EIP-191 prefixing, the verifier
- * should ECDSA.recover(this digest, sig) directly. Either path works — the
- * contract author picks one and we mirror.
+ * Exposed for tests / third-party signers: the raw (unprefixed) digest.
+ *
+ * The currently-canonical dialect (V0) applies EIP-191 prefixing on top of
+ * this digest before recovery — `EdgeDevice.sign` does that automatically via
+ * `wallet.signMessage`. This export is kept so reference tests can compute
+ * the inner digest for cross-validation against `signatures.ts::packetHash`.
+ *
+ * See `docs/PROTOCOL_SPEC.md` for the canonical dialect.
  */
 export const DEVICE_DIGEST_RAW = buildDeviceDigest;

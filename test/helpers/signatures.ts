@@ -1,10 +1,22 @@
 // Helpers for building and signing MeasurementPackets the way OracleRouter
 // expects them.
 //
-// The OracleRouter interface (contracts/interfaces/IOracleRouter.sol) declares:
-//   submitMeasurement(MeasurementPacket packet, bytes deviceSignature, bytes vppSignature)
-//   - deviceSignature signs keccak256(abi.encode(packet))
-//   - vppSignature   signs keccak256(abi.encode(packet, deviceSignature))
+// CANONICAL ENCODING (per OracleRouter.sol:160, 166, 175-176 — see also
+// docs/PROTOCOL_SPEC.md, EXERGY_SIGNATURE_DIALECT_V0):
+//
+//   packetHash    = keccak256(abi.encode(packet))         // bytes32
+//   deviceDigest  = "\x19Ethereum Signed Message:\n32" || packetHash, then keccak
+//   vppPayload    = keccak256(abi.encode(packetHash, deviceSignature))   // bytes32
+//   vppDigest     = "\x19Ethereum Signed Message:\n32" || vppPayload, then keccak
+//
+// Both signatures are produced via `wallet.signMessage(getBytes(<hash>))`
+// which applies the EIP-191 prefix internally and is recovered on-chain via
+// `MessageHashUtils.toEthSignedMessageHash(...).recover(sig)`.
+//
+// IMPORTANT: the VPP digest's INNER `abi.encode` takes `(bytes32, bytes)` —
+// i.e. the device packet HASH, not the packet struct itself. An earlier
+// version of this helper encoded the struct again; that diverged from the
+// contract and broke interop. See CONCEPT_AUDIT.md D-1.
 //
 // In tests, signers are local ethers.Wallets so we can deterministically derive
 // addresses for device + VPP cloud and register them in OracleRouter.
@@ -35,10 +47,9 @@ export function packetHash(packet: MeasurementPacket): string {
 }
 
 /**
- * Sign a packet as the device. Uses signMessage (EIP-191 prefixed) so the
- * contract can recover via ECDSA.recover after applying the same prefix —
- * this matches the most common OZ ECDSA usage. If the contracts agent opts
- * for raw signMessage instead, only `signDevice` and `signVpp` need updating.
+ * Sign a packet as the device. Uses signMessage (EIP-191 prefixed) — the
+ * contract recovers via `packetHash.toEthSignedMessageHash().recover(sig)` so
+ * the prefix is applied on both sides and the bytes match.
  */
 export async function signDevice(
   packet: MeasurementPacket,
@@ -49,14 +60,24 @@ export async function signDevice(
   return device.signMessage(ethers.getBytes(hash));
 }
 
+/**
+ * Sign the VPP cosignature.
+ *
+ * CANONICAL: `keccak256(abi.encode(packetHash :: bytes32, deviceSignature :: bytes))`
+ * (per OracleRouter.sol:175). The inner `abi.encode` takes the device-digest
+ * HASH, not the packet struct. Encoding the struct again (older buggy variant)
+ * produces a different vppPayloadHash and the contract reverts with
+ * `InvalidVPPSignature`.
+ */
 export async function signVpp(
   packet: MeasurementPacket,
   deviceSignature: string,
   vppCloud: Wallet | HDNodeWallet
 ): Promise<string> {
+  const pHash = packetHash(packet);
   const inner = ethers.AbiCoder.defaultAbiCoder().encode(
-    [PACKET_TUPLE, "bytes"],
-    [packet, deviceSignature]
+    ["bytes32", "bytes"],
+    [pHash, deviceSignature]
   );
   const hash = ethers.keccak256(inner);
   return vppCloud.signMessage(ethers.getBytes(hash));
@@ -85,10 +106,8 @@ export function makeWallet(seed: string): Wallet {
 
 /** keccak256 of a wallet's *uncompressed* public key, matching the spec. */
 export function devicePubKeyHash(w: Wallet | HDNodeWallet): string {
-  // ethers exposes signingKey.publicKey as 0x04|X|Y (uncompressed, 65 bytes).
-  // The spec says keccak256 of the public key — strip the 0x04 prefix to match
-  // the Ethereum address derivation convention.
-  const pub = w.signingKey.publicKey; // 0x04...
-  const stripped = "0x" + pub.slice(4);
-  return ethers.keccak256(stripped);
+  // CONTRACT TRUTH: OracleRouter does keccak256(abi.encodePacked(recoveredAddress))
+  // i.e. hash of the 20-byte address (NOT uncompressed pubkey).
+  // See OracleRouter.sol — keccak256(abi.encodePacked(recoveredDevice)) != rec.devicePubKeyHash.
+  return ethers.solidityPackedKeccak256(["address"], [w.address]);
 }

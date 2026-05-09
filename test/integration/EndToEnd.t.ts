@@ -24,8 +24,10 @@ import {
 } from "../helpers/fixtures";
 import {
   devicePubKeyHash,
+  encodePacket,
   makePacket,
   makeWallet,
+  packetHash,
   signDevice,
   signVpp,
 } from "../helpers/signatures";
@@ -206,5 +208,159 @@ describe("Integration: end-to-end happy path", () => {
 
     expect(await sys.token.totalSupply()).to.equal(totalMinted);
     expect(await sys.mintingEngine.totalTokensMinted()).to.equal(totalMinted);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Interop probe — Phase 0 dialect (EXERGY_SIGNATURE_DIALECT_V0).
+//
+// Regression for CONCEPT_AUDIT.md D-1. The contract, the test helpers, and
+// the oracle-simulator must produce IDENTICAL bytes for the device digest
+// and the VPP-cosignature digest given identical inputs. Any drift between
+// reference implementations is a violation of CORE_THESIS "no centralized
+// software gatekeeping" — this test would have caught the original bug
+// (test helper encoded the packet struct again, simulator added a third
+// `vppAddress` field).
+//
+// We do NOT reach for a full deploy here — the probe is a pure-bytes check
+// of the digest construction so it stays fast and runs in every CI cycle.
+// ---------------------------------------------------------------------------
+describe("Interop probe: Phase 0 dialect digest equivalence", () => {
+  it("test helper packet hash matches a from-scratch ethers.js encoding", () => {
+    const packet = makePacket({
+      deviceId: ethers.id("interop-probe-device"),
+      kwhAmount: 777n,
+      timestamp: 1_700_000_000,
+      storageCapacity: 13_500n,
+      chargeLevelPercent: 42,
+      sourceType: 0,
+      cumulativeCycles: 99,
+    });
+
+    // Reference path #1: helper's `packetHash` (encodes as struct tuple).
+    const helperHash = packetHash(packet);
+
+    // Reference path #2: encode field-by-field per PROTOCOL_SPEC.md §6.
+    // For an all-static-types struct, abi.encode(struct) == abi.encode(fields...).
+    const fieldsEncoded = ethers.AbiCoder.defaultAbiCoder().encode(
+      ["bytes32", "uint256", "uint64", "uint256", "uint8", "uint8", "uint32"],
+      [
+        packet.deviceId,
+        packet.kwhAmount,
+        packet.timestamp,
+        packet.storageCapacity,
+        packet.chargeLevelPercent,
+        packet.sourceType,
+        packet.cumulativeCycles,
+      ]
+    );
+    const fieldsHash = ethers.keccak256(fieldsEncoded);
+
+    // Reference path #3: encode via the helper's tuple type explicitly.
+    // (sanity-check that `encodePacket` and ad-hoc encoding agree)
+    const tupleEncoded = encodePacket(packet);
+    const tupleHash = ethers.keccak256(tupleEncoded);
+
+    expect(helperHash).to.equal(fieldsHash);
+    expect(helperHash).to.equal(tupleHash);
+  });
+
+  it("VPP-cosignature payload hash equals abi.encode(packetHash, deviceSig)", async () => {
+    const device = makeWallet("interop-device");
+    const vpp = makeWallet("interop-vpp");
+    const packet = makePacket({
+      deviceId: ethers.id("interop-vpp-device"),
+      kwhAmount: 321n,
+      cumulativeCycles: 7,
+    });
+
+    const devSig = await signDevice(packet, device);
+
+    // The contract computes (per OracleRouter.sol:175):
+    //   vppPayloadHash = keccak256(abi.encode(packetHash, deviceSignature));
+    const expectedPayloadHash = ethers.keccak256(
+      ethers.AbiCoder.defaultAbiCoder().encode(
+        ["bytes32", "bytes"],
+        [packetHash(packet), devSig]
+      )
+    );
+
+    // The helper uses the same rule. We verify the VPP signature recovers
+    // to the VPP wallet under the canonical scheme — which only works if
+    // the helper's vppPayloadHash equals the contract's vppPayloadHash.
+    const vppSig = await signVpp(packet, devSig, vpp);
+
+    // Recreate the digest the contract recovers against:
+    //   vppDigest = keccak256("\x19Ethereum Signed Message:\n32" || vppPayloadHash)
+    // and verify recovery.
+    const recovered = ethers.verifyMessage(
+      ethers.getBytes(expectedPayloadHash),
+      vppSig
+    );
+    expect(recovered.toLowerCase()).to.equal(vpp.address.toLowerCase());
+  });
+
+  it("device digest recovery matches the contract's recovery scheme", async () => {
+    const device = makeWallet("interop-device-recovery");
+    const packet = makePacket({
+      deviceId: ethers.id("interop-recovery"),
+      kwhAmount: 50n,
+    });
+
+    const devSig = await signDevice(packet, device);
+
+    // Mirror OracleRouter.sol:166-167:
+    //   bytes32 deviceDigest = packetHash.toEthSignedMessageHash();
+    //   address recovered = deviceDigest.recover(deviceSignature);
+    const recovered = ethers.verifyMessage(
+      ethers.getBytes(packetHash(packet)),
+      devSig
+    );
+    expect(recovered.toLowerCase()).to.equal(device.address.toLowerCase());
+  });
+
+  it("rejects the legacy (struct-as-inner) VPP encoding — contracts MUST diverge", async () => {
+    const device = makeWallet("legacy-encoding-device");
+    const vpp = makeWallet("legacy-encoding-vpp");
+    const packet = makePacket({ deviceId: ethers.id("legacy-encoding") });
+
+    const devSig = await signDevice(packet, device);
+
+    // The OLD (broken) encoding: encode the struct again instead of its hash.
+    const PACKET_TUPLE =
+      "tuple(bytes32 deviceId,uint256 kwhAmount,uint64 timestamp,uint256 storageCapacity,uint8 chargeLevelPercent,uint8 sourceType,uint32 cumulativeCycles)";
+    const legacyPayloadHash = ethers.keccak256(
+      ethers.AbiCoder.defaultAbiCoder().encode(
+        [PACKET_TUPLE, "bytes"],
+        [packet, devSig]
+      )
+    );
+
+    const canonicalPayloadHash = ethers.keccak256(
+      ethers.AbiCoder.defaultAbiCoder().encode(
+        ["bytes32", "bytes"],
+        [packetHash(packet), devSig]
+      )
+    );
+
+    // Sanity: they differ — that's the whole point of D-1.
+    expect(legacyPayloadHash).to.not.equal(canonicalPayloadHash);
+
+    // The current helper uses the canonical form.
+    const vppSig = await signVpp(packet, devSig, vpp);
+    const recovered = ethers.verifyMessage(
+      ethers.getBytes(canonicalPayloadHash),
+      vppSig
+    );
+    expect(recovered.toLowerCase()).to.equal(vpp.address.toLowerCase());
+
+    // ...and would fail recovery against the legacy hash.
+    const recoveredAgainstLegacy = ethers.verifyMessage(
+      ethers.getBytes(legacyPayloadHash),
+      vppSig
+    );
+    expect(recoveredAgainstLegacy.toLowerCase()).to.not.equal(
+      vpp.address.toLowerCase()
+    );
   });
 });

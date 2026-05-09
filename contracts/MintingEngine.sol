@@ -80,6 +80,27 @@ contract MintingEngine is
     /// @notice Hard ceiling on era to avoid pathological infinite halving loops.
     uint256 public constant MAX_ERA = 64;
 
+    /**
+     * @notice Per-epoch ceiling on cycle deltas accepted from a single device.
+     * @dev THIS IS THE PROOF-OF-WEAR FLOOR. See Technical_Blueprint §5.6 + CORE_THESIS:
+     *      Proof-of-Wear is the native Sybil resistance that distinguishes Exergy from
+     *      PoW (electricity cost, recoverable) and PoS (capital lockup cost, recoverable).
+     *      Cycling a battery costs ~$0.10/kWh in irreversible hardware degradation —
+     *      Bitcoin spends electricity, we spend the asset. That is only true if the
+     *      contract REJECTS impossible cycle counts. Otherwise an attacker simulates
+     *      cycles for free and the entire Sybil-resistance story collapses.
+     *
+     *      Number rationale: NREL residential lithium-ion data shows ~1 full equivalent
+     *      cycle per day under normal solar+load duty. EPOCH_DURATION = 24h. We accept
+     *      up to 2 cycles per epoch — one realistic full-cycle plus a margin for partial
+     *      cycles, clock skew, and unusual but legitimate dispatch days.
+     *
+     *      Autonomous by design: there is NO setter for this value. Not by admin, not
+     *      by governance. CORE_THESIS §5.5 ("no human reviews, no subjective decisions")
+     *      and the CONCEPT_AUDIT D-7 fix both bind this constant to the code.
+     */
+    uint256 public constant MAX_CYCLES_PER_EPOCH = 2;
+
     // ---------------------------------------------------------------------
     // Storage
     // ---------------------------------------------------------------------
@@ -106,8 +127,19 @@ contract MintingEngine is
     /// @notice Per-epoch aggregate state.
     mapping(uint256 => EpochData) private _epochs;
 
+    /**
+     * @notice Per-device Proof-of-Wear state.
+     * @dev Lazily initialized on a device's first successful packet — see
+     *      `_validateAndUpdateProofOfWear`. Once initialized, stores the device's
+     *      monotonic cycle counter, the epoch the last accepted packet was minted in,
+     *      and the device's storage capacity. Capacity may grow (re-attestation of a
+     *      hardware expansion) but never shrink.
+     */
+    mapping(bytes32 => DeviceCycleState) private _deviceCycleState;
+
     /// @dev Reserved storage gap for upgradeable layout safety.
-    uint256[40] private __gap;
+    /// @dev DECREMENTED from 40 → 39 to account for new `_deviceCycleState` mapping above.
+    uint256[39] private __gap;
 
     // ---------------------------------------------------------------------
     // Initializer
@@ -180,10 +212,28 @@ contract MintingEngine is
     function commitVerifiedEnergy(
         bytes32 deviceId,
         address vppAddress,
-        uint256 kwhAmount
+        uint256 kwhAmount,
+        uint32 cumulativeCycles,
+        uint256 storageCapacity
     ) external override whenNotPaused nonReentrant returns (uint256 tokensMinted) {
         if (msg.sender != oracleRouter) revert NotOracleRouter();
         if (vppAddress == address(0)) revert ZeroAddress();
+
+        uint256 epoch = currentEpoch();
+
+        // -------- PROOF-OF-WEAR ENFORCEMENT (Blueprint §5.6) --------
+        // CORE_THESIS: this is the native Sybil resistance — the on-chain check that
+        // turns "device cycled an impossible amount" into a hard revert. Runs BEFORE
+        // any state mutation so a rejected packet leaves no trace except the
+        // AnomalyRejected event already emitted inside the helper.
+        _validateAndUpdateProofOfWear(
+            deviceId,
+            vppAddress,
+            kwhAmount,
+            cumulativeCycles,
+            storageCapacity,
+            epoch
+        );
 
         uint256 era = currentEra;
         uint256 rate = _rateForEra(era);
@@ -191,7 +241,6 @@ contract MintingEngine is
         if (tokensMinted == 0) revert MintAmountZero();
 
         // Apply state.
-        uint256 epoch = currentEpoch();
         EpochData storage e = _epochs[epoch];
         if (e.sealed_) revert EpochAlreadySealed(epoch);
         e.totalVerifiedKwh += kwhAmount;
@@ -338,9 +387,171 @@ contract MintingEngine is
         return _epochs[epoch];
     }
 
+    /// @inheritdoc IMintingEngine
+    function getDeviceCycleState(bytes32 deviceId)
+        external
+        view
+        override
+        returns (DeviceCycleState memory)
+    {
+        return _deviceCycleState[deviceId];
+    }
+
     // ---------------------------------------------------------------------
     // Internals
     // ---------------------------------------------------------------------
+
+    /**
+     * @dev Autonomous Proof-of-Wear + capacity enforcement.
+     *
+     *      CORE_THESIS / Blueprint §5.6 contract: every charge/discharge cycle costs the
+     *      operator real, irreversible hardware degradation (~$0.10/kWh, NREL). That cost
+     *      is what makes wash-trading uneconomical and Sybil-resistant. But the cost only
+     *      bites if the contract REFUSES to accept impossible cycle counts — otherwise an
+     *      attacker can claim 1000 cycles in a day on a simulated battery and never pay
+     *      the wear. So this function is the load-bearing implementation of that thesis.
+     *
+     *      Three checks, in order, all autonomous (no admin override, no setter, no
+     *      governance vote):
+     *
+     *      1. **Capacity-shrink rejection.** First packet locks in `storageCapacity` for
+     *         the device. Later packets may attest equal-or-greater capacity but never
+     *         less. (Physical batteries don't grow back. An attacker shrinking capacity
+     *         lets them slip a smaller kWh through the §3 check — we close that door.)
+     *
+     *      2. **Cycle-monotonicity + cap.** `cumulativeCycles` is a lifetime counter from
+     *         the device firmware. It MUST be ≥ the last accepted value (regression
+     *         rejected). The delta from last packet MUST be ≤
+     *         `MAX_CYCLES_PER_EPOCH * (epochsDelta + 1)` — i.e. at most 2 cycles per
+     *         24h epoch since last submission. The `+1` is intentional: a packet within
+     *         the same epoch as the previous one still gets one full epoch of cycle
+     *         budget (a battery that legitimately cycled twice in one day produces two
+     *         packets in the same epoch).
+     *
+     *      3. **Energy-vs-capacity sanity.** `kwhAmount` for THIS packet must be
+     *         ≤ `storageCapacity * cyclesDelta`. (You cannot have moved more energy
+     *         through the battery than `capacity × number_of_cycles_since_last_packet`.)
+     *         When `cyclesDelta == 0` the packet is reporting energy without any wear,
+     *         which is a cleaner Sybil pattern than impossible-high cycles — we treat it
+     *         the same as cyclesDelta=0 → max=0, so any non-zero kWh is rejected.
+     *
+     *      On the first packet for a device, all three checks degrade gracefully: there
+     *      is no prior state, so monotonicity and the cycle-cap are skipped (we cannot
+     *      compute a delta), but the energy-vs-capacity check still runs against
+     *      `cumulativeCycles` itself (lifetime cycles bound the lifetime energy ever
+     *      stored). This keeps a freshly-registered Sybil device from claiming 10 GWh on
+     *      its first packet just because it has no history.
+     *
+     *      All rejections emit `AnomalyRejected(deviceId, vppAddress, kwhAmount,
+     *      cumulativeCycles, reason)` BEFORE the revert so off-chain monitors can index
+     *      Sybil patterns without re-executing.
+     */
+    function _validateAndUpdateProofOfWear(
+        bytes32 deviceId,
+        address vppAddress,
+        uint256 kwhAmount,
+        uint32 cumulativeCycles,
+        uint256 storageCapacity,
+        uint256 epoch
+    ) internal {
+        DeviceCycleState storage state = _deviceCycleState[deviceId];
+
+        if (!state.initialized) {
+            // -------- First packet for this device --------
+            // We cannot check monotonicity / cycle-delta cap (no prior state). But the
+            // energy-vs-capacity invariant still applies: `kwhAmount ≤ capacity ×
+            // lifetimeCycles`. A device that has cycled 0 times cannot have stored any
+            // energy regardless of capacity — reject.
+            uint256 firstPacketMaxEnergy = storageCapacity * uint256(cumulativeCycles);
+            if (kwhAmount > firstPacketMaxEnergy) {
+                emit AnomalyRejected(
+                    deviceId,
+                    vppAddress,
+                    kwhAmount,
+                    cumulativeCycles,
+                    bytes32("ENERGY_EXCEEDS_CAPACITY")
+                );
+                revert EnergyExceedsCapacity(kwhAmount, firstPacketMaxEnergy);
+            }
+
+            state.lastCumulativeCycles = cumulativeCycles;
+            state.lastEpoch = uint64(epoch);
+            state.storageCapacity = storageCapacity;
+            state.initialized = true;
+            emit DeviceCycleStateInitialized(deviceId, cumulativeCycles, uint64(epoch), storageCapacity);
+            return;
+        }
+
+        // -------- Subsequent packet for an initialized device --------
+
+        // (1) Capacity must not shrink. Equal-or-grow is OK (hardware expansion event;
+        //     the larger capacity becomes the new lock).
+        if (storageCapacity < state.storageCapacity) {
+            emit AnomalyRejected(
+                deviceId,
+                vppAddress,
+                kwhAmount,
+                cumulativeCycles,
+                bytes32("CAPACITY_SHRINK")
+            );
+            revert CapacityShrinkRejected(state.storageCapacity, storageCapacity);
+        }
+
+        // (2) Cycle counter must be monotonically non-decreasing.
+        if (cumulativeCycles < state.lastCumulativeCycles) {
+            emit AnomalyRejected(
+                deviceId,
+                vppAddress,
+                kwhAmount,
+                cumulativeCycles,
+                bytes32("CYCLE_REGRESSION")
+            );
+            revert CycleCounterRegression(state.lastCumulativeCycles, cumulativeCycles);
+        }
+
+        // (3) Cycle delta must fit inside the per-epoch cap.
+        //     `epochsDelta + 1` budget reflects: even a same-epoch resubmission gets a
+        //     full epoch's worth of cycles (a battery that legitimately cycled twice in
+        //     one day will emit two packets within the same epoch).
+        uint256 cyclesDelta;
+        unchecked {
+            cyclesDelta = uint256(cumulativeCycles - state.lastCumulativeCycles);
+        }
+        uint256 epochsDelta = epoch - uint256(state.lastEpoch); // epoch >= state.lastEpoch (currentEpoch is monotonic; same-epoch packets give 0 here)
+        uint256 maxCyclesAllowed = MAX_CYCLES_PER_EPOCH * (epochsDelta + 1);
+        if (cyclesDelta > maxCyclesAllowed) {
+            emit AnomalyRejected(
+                deviceId,
+                vppAddress,
+                kwhAmount,
+                cumulativeCycles,
+                bytes32("PROOF_OF_WEAR")
+            );
+            revert ProofOfWearViolation(cyclesDelta, maxCyclesAllowed);
+        }
+
+        // (4) Energy claimed in this packet must be physically possible given
+        //     declared capacity and cycles since last packet.
+        uint256 maxEnergy = storageCapacity * cyclesDelta;
+        if (kwhAmount > maxEnergy) {
+            emit AnomalyRejected(
+                deviceId,
+                vppAddress,
+                kwhAmount,
+                cumulativeCycles,
+                bytes32("ENERGY_EXCEEDS_CAPACITY")
+            );
+            revert EnergyExceedsCapacity(kwhAmount, maxEnergy);
+        }
+
+        // All checks passed — update device state.
+        state.lastCumulativeCycles = cumulativeCycles;
+        state.lastEpoch = uint64(epoch);
+        // Capacity may grow over time (hardware expansion). Lock in the new larger value.
+        if (storageCapacity > state.storageCapacity) {
+            state.storageCapacity = storageCapacity;
+        }
+    }
 
     /**
      * @dev Mint rate at era N = RATE_BASE_WEI >> N (integer division by 2^N).

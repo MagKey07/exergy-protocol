@@ -133,3 +133,91 @@ npx ts-node src/index.ts single-packet --device vpp-tx:device-000 --vpp vpp-tx -
 - [ ] `npm install` — deferred per spec
 - [ ] `npm run lint:types` — deferred (needs install)
 - [ ] End-to-end run against deployed OracleRouter — blocked on smart-contracts agent shipping the testnet contract
+
+---
+
+## D-1 canonical digest sync landed (2026-05-09)
+
+Fixed `CONCEPT_AUDIT.md` Drift D-1: three components disagreed on the
+VPP-cosignature digest encoding. Aligned all of them on the contract's encoding
+and published a single source of truth so any third-party VPP-cloud
+implementer can interop without reading Solidity.
+
+### Diff summary (3 modified, 1 new, 1 reference test added)
+
+- **`oracle-simulator/src/vpp-cloud.ts`** — modified.
+  - `VPP_DIGEST_TYPES` reduced from `['bytes32', 'bytes', 'address']` to
+    `['bytes32', 'bytes']` (drops the `vppAddress` field that was breaking
+    interop). The device→VPP binding lives in the on-chain registry, not in
+    the cosignature payload.
+  - `buildVppDigest(packet)` no longer takes `vppAddress`.
+  - Added `cosignReference(packet, signFn)` — exported pure function so other
+    cloud implementations can consume it as a reference, not as a shim.
+- **`oracle-simulator/src/edge-device.ts`** — comment refresh only.
+  - Logic was already aligned with the contract (EIP-191 prefix via
+    `wallet.signMessage(getBytes(digest))` matches `MessageHashUtils.toEthSignedMessageHash`).
+  - Tightened the file-level docstring to spell out the two byte-equivalences
+    that make the simulator's encoding correct (struct vs. fields, EIP-191
+    parity), and labeled the dialect `EXERGY_SIGNATURE_DIALECT_V0`.
+- **`test/helpers/signatures.ts`** — modified.
+  - `signVpp` now encodes `(bytes32, bytes)` of `(packetHash, deviceSignature)`
+    instead of `(packetTuple, deviceSignature)`. This was the literal D-1 bug
+    in the test helper — it was double-encoding the struct.
+- **`docs/PROTOCOL_SPEC.md`** — new.
+  - Sections: packet schema, device signature, VPP cosignature, Anti-Simulation
+    Lock rules, reference TS snippet, version table (V0/V1/V2), change-control.
+  - Tagged dialect: `EXERGY_SIGNATURE_DIALECT_V0`.
+  - Notes that production may move to EIP-712 typed data; Phase 0 stays simple.
+- **`test/integration/EndToEnd.t.ts`** — added a new `describe("Interop probe …")`
+  block with 4 tests:
+  1. Test helper packet hash equals from-scratch field-by-field encoding
+     (proves the struct/fields equivalence).
+  2. VPP-cosignature digest verifies under canonical `(bytes32, bytes)` rule.
+  3. Device digest recovery matches the contract's EIP-191 recovery scheme.
+  4. Asserts the legacy (struct-as-inner) encoding produces a *different*
+     hash — regression that would have caught D-1 immediately.
+
+### Key decision: contract is canonical
+
+Picked the contract's encoding as the single source of truth — rationale:
+the contract is already deployed in this commit and its bytecode is
+immutable for the demo lifecycle. Changing it would require a new deployment
+and re-registration of every device. Changing the simulator/test helpers is
+cheap. The contract uses EIP-191 prefix on both digests via OZ's
+`MessageHashUtils.toEthSignedMessageHash` — the simulator already did this,
+so no behavior change there; only the inner encoding for the VPP digest
+needed alignment.
+
+### Latent bug noticed but NOT fixed in this pass
+
+The `devicePubKeyHash` helpers in `test/helpers/signatures.ts:87-94` and
+`oracle-simulator/src/keypair.ts::pubKeyHashFromWallet` compute
+`keccak256(uncompressed_pubkey_64_bytes)`. The contract on line 168 compares
+against `keccak256(abi.encodePacked(recoveredAddress))` — i.e. a 20-byte
+address, not the 64-byte pubkey. These should diverge and tests should fail
+at the device-sig step. Either the existing tests were never run end-to-end
+or there's something I'm missing — flagging for the smart-contracts agent
+review before integration. Documented the correct formula in PROTOCOL_SPEC §3
+(Device registry binding) so the next implementation gets it right.
+
+### Open question for the Chainlink Adapter sprint
+
+Does the same digest format flow through the External Adapter unchanged, or
+does Chainlink expect its own envelope? The blueprint §3 calls for 3-of-5
+node consensus + DSO cross-check; if each Chainlink node re-signs the packet
+with its own key, we may need a third digest layer
+(`keccak256(abi.encode(vppPayloadHash, vppSignature))`) and a Chainlink-side
+quorum-aggregation step. PROTOCOL_SPEC §7 reserves V1/V2 for this kind of
+extension; the dialect tag travels with the contract version. To be resolved
+in the adapter sprint kickoff.
+
+### Did not modify
+
+- `contracts/OracleRouter.sol` — canonical, immutable.
+- `contracts/interfaces/IOracleRouter.sol` — only docs (NatSpec) reference
+  the encoding; they're already correct as `keccak256(abi.encode(packet, deviceSignature))`.
+  Strictly speaking the NatSpec is slightly imprecise (says `packet`, the
+  implementation uses `packetHash`); a NatSpec-only PR would be the right
+  surgical follow-up but is out of scope for this digest-sync work.
+- Dashboard signing path — does not exist; the dashboard reads on-chain state
+  only and does not sign measurements.

@@ -120,3 +120,34 @@ What's weak (until the contracts agent commits):
 ---
 
 *End of build log. Hand off to contracts agent for implementation pass.*
+
+---
+
+## 2026-05-09 — D-8 fix: Settlement.t.ts rewritten against actual Settlement.sol ABI
+
+**Agent:** Turpal (HQ Consigliere) — concept-fidelity drift fix follow-up to CONCEPT_AUDIT.md.
+**Trigger:** Audit drift D-8. Test file was written against a speculative ABI (`settleEnergy(from, to, amount)`, `recordRedemption(consumer, amount, kwh)`, fee-from-gross). The committed `Settlement.sol` exposes `settleEnergy(address provider, uint256 tokenAmount, uint256 kwhConsumed)` and `crossVPPSettle(address receiver, bytes32 counterpartyVPPId, uint256 tokenAmount)` with **fee paid on top** of principal.
+
+### Files changed
+
+| File | Lines (new) | Change |
+|---|---|---|
+| `test/Settlement.t.ts` | 411 (was 198) | Full rewrite. Removed "Interface for Settlement is not yet committed" header comment — interface is committed, file now references `Settlement.sol` and `ISettlement.sol` verbatim. Replaced every obsolete `settleEnergy(from, to, amount)` call with the real 3-arg form. Removed every `recordRedemption(...)` call (no such function exists; consumption is now folded into `settleEnergy`'s `kwhConsumed` parameter). Approval amounts updated to `principal + fee` (fee-on-top semantics). Distribution math now matches `Settlement._distributeFees` exactly: insurance bucket gets the rounding remainder, not a separate floor-bps share. Added new tests: `crossVPPSettle` happy path, zero-receiver revert, zero-amount revert, fee distribution check, `EnergySettled`/`CrossVPPSettled`/`FeesDistributed` event-arg assertions, `setFeeRecipients` zero-address guard, `setFeeRecipients` happy-path via `governor` (the FEE_MANAGER_ROLE holder per `deployFullSystem`), explicit NO-BURN invariant comparing `totalSupply` before/after for both intra-VPP and cross-VPP paths, `kwhConsumed > 0` storage-shrink-without-burn assertion. |
+
+### `recordEnergyConsumption` test — design note
+
+Audit asks for an explicit test of `MintingEngine.recordEnergyConsumption`. The function is deliberately gated to `msg.sender == address(settlement)` (`MintingEngine.sol:232`), so it cannot be invoked directly from a test signer without impersonating Settlement and breaking the security boundary. Instead, the consumption path is exercised end-to-end through `settleEnergy(provider, principal, kwhConsumed)`: the test asserts `totalVerifiedEnergyInStorage` decremented by exactly `kwhConsumed` while `totalSupply` and `totalTokensMinted` stayed flat. This is the on-thesis way to verify the function — calling Settlement is the only legitimate caller.
+
+### Disagreements with audit
+
+- **No structural disagreement** with the ABI claims in the audit (verified by reading `Settlement.sol` lines 129-179 and `ISettlement.sol` lines 73-81).
+- **Pedantic note:** the audit example "fee distribution math is correct: 40% treasury, 20% team, 25% ecosystem, 15% insurance" is approximately right but the contract's actual algorithm is "treasury/team/ecosystem use floor bps math, insurance gets the residue (`fee - treasury - team - ecosystem`)." For round numbers the residue equals `fee * 1500 / 10_000` exactly; for fees with sub-bps remainders the insurance bucket absorbs the rounding. Tests assert the residue formulation so they remain green at any fee value, not just round multiples of 10_000.
+
+### Open issues
+
+1. **`test/integration/EndToEnd.t.ts` still uses the obsolete signatures** (lines 101 `settleEnergy(from, to, amount)` and 132 `recordRedemption(...)`). Same drift as D-8 but in a different file. Out of scope for the targeted D-8/D-9 fix; needs the same rewrite pass. Suggest a follow-up commit.
+2. **`feeRecipients()` getter is exercised** in the new tests via `await settlement.feeRecipients()` returning the FeeRecipients tuple. The contract exposes it as an explicit view (`Settlement.sol:243`); no auto-generated mapping getter needed. Per task constraint, no admin functions added.
+3. **Custom-error-matcher specificity.** Tests use `revertedWithCustomError(settlement, "ZeroAddress")` and `"AmountZero"`. If `Settlement.sol` ever inherits a different error name from a base contract (e.g. OZ AccessControl's), the access-control test that uses bare `to.be.reverted` is robust; the named-error tests are tied to the current contract's custom errors and will need a touch-up if `ISettlement.sol` renames an error.
+4. **`commitVerifiedEnergy` mint-fee skim is silent** when the recipient hasn't approved Settlement (try/catch swallow on `MintingEngine.sol:218-222`). The seed helper relies on this — alice ends up with the full mint, not minus 1%. This is the testnet-pragmatic behaviour explicitly called out in `Settlement.sol:31-33` and not under test here. If a future test wants to assert mint-fee collection, alice (the seed recipient) must approve Settlement before being seeded; an opt-in `seedTokensWithFeeApproval` helper would be the clean way to add that.
+
+— Turpal (HQ).

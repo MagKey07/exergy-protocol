@@ -172,3 +172,37 @@ When the contracts agent compiles `XRGYToken.sol`, `MintingEngine.sol`, `OracleR
 5. For the Phase 1 indexer integration, the swap points are documented inline in `useVPPDevices.ts`, `useMintEvents.ts`, and the README "What's mocked" section.
 
 — Frontend agent.
+
+---
+
+## 2026-05-09 — D-9 fix: Settlement page rewired to actual Settlement.sol ABI
+
+**Agent:** Turpal (HQ Consigliere) — concept-fidelity drift fix follow-up to CONCEPT_AUDIT.md.
+**Trigger:** Audit drift D-9. Dashboard called `settle(to, amount, memoHash)` and `settleCrossVPP(toVPP, to, amount, memoHash)` — neither function exists on the deployed contract. Real surface is `settleEnergy(provider, tokenAmount, kwhConsumed)` and `crossVPPSettle(receiver, counterpartyVPPId, tokenAmount)`.
+
+### Files changed
+
+| File | Lines (new) | Change |
+|---|---|---|
+| `dashboard/src/lib/contracts.ts` | 383 (was 334) | Replaced narrow Settlement ABI: `settle`/`settleCrossVPP` removed; `settleEnergy`, `crossVPPSettle`, `mintingFeeBps`, `feeRecipients` view added; events `EnergySettled`, `CrossVPPSettled`, `FeesDistributed` replace the speculative `Settled` aggregate. ABI now mirrors `contracts/Settlement.sol` + `contracts/interfaces/ISettlement.sol` verbatim. |
+| `dashboard/src/pages/Settlement.tsx` | 361 (was 324) | Rewired both writeContract call sites: `settle` → `settleEnergy(provider, tokenAmount, 0n)` for intra-VPP (kwhConsumed = 0 because this is an operator manual form, not the metering pipeline); `settleCrossVPP` → `crossVPPSettle(receiver, counterpartyVPPId, tokenAmount)` for cross-VPP. `memoHash` is no longer passed on-chain — kept in UI as off-chain bookkeeping only. `counterpartyVPPId` (bytes32) is derived deterministically as `keccak256(toLowerCase(toVpp))`. Updated fee-on-top semantics in the preview (recipient receives full principal; payer is debited principal + fee; insufficient-balance check now uses `principal + fee`). Header subtitle and memo hint updated to match new contract semantics. |
+
+### Behavioural changes visible to operators
+
+- **Recipient receives the full amount, not net-of-fee.** Previous preview said "Recipient receives = amount − fee"; the on-chain reality is the recipient gets the full `tokenAmount` and the payer pays the fee on top. Preview now shows "Recipient receives" (= principal) + "Fee (X bps, on top)" + "Total debited from you" (= principal + fee).
+- **Approval surface changed.** Operators must approve `tokenAmount + fee` to Settlement before submitting. The form does not yet do an `approve` call (still relies on the operator having a standing approval); flagged below.
+- **Memo is no longer on-chain.** The contract has no memo parameter. The UI still hashes the memo locally for operator records, but it is never sent in the transaction.
+- **Cross-VPP form takes the counterparty VPP address as before** but it now feeds into a derived `bytes32 counterpartyVPPId` digest passed to the contract. Off-chain registry can map digest → VPP name.
+
+### Disagreements with audit
+
+- None. Audit's claimed Settlement ABI matches the contract verbatim (verified by reading `Settlement.sol:129-179` and `ISettlement.sol:73-81`).
+
+### Open issues
+
+1. **Approval flow still missing.** Settlement form assumes operator has pre-approved `tokenAmount + fee`. Should add a wagmi `approve` step that fires when `allowance < principal + fee`. Out of scope for this drift fix; tracked as a separate UX gap for next sprint.
+2. **`useSettlements` indexer hook (if/when added) must subscribe to `EnergySettled` and `CrossVPPSettled`, not the obsolete `Settled` event** that earlier scaffolding alluded to. The new ABI's events match the contract — any historical-tx page can plug straight in.
+3. **Counterparty VPP id is a client-side hash of the address.** Acceptable for Phase 0 demo, but the real off-chain VPP registry should publish the canonical `bytes32 vppId` for each VPP and the form should accept that directly (or both).
+4. **No on-chain memo means the operator has no audit anchor for an off-chain invoice number** if their bookkeeping needs one. Two paths if storytelling demands it: (a) extend `Settlement.sol` events with a `memoHash` field — adds storage-free indexed metadata; (b) emit a separate side-channel log via a `MemoLogger` contract. Both are sprint-extension work.
+
+— Turpal (HQ).
