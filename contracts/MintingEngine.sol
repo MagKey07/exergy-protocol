@@ -237,7 +237,10 @@ contract MintingEngine is
 
         uint256 era = currentEra;
         uint256 rate = _rateForEra(era);
-        tokensMinted = kwhAmount * rate;
+        // SCALING: kwhAmount is 18-decimal (1 kWh = 1e18), rate is 18-decimal (1 token/kWh = 1e18).
+        // Naive multiplication produces 36-decimal output. Divide by 1e18 to keep token supply
+        // in canonical 18-decimal ERC-20 wei units.
+        tokensMinted = (kwhAmount * rate) / 1e18;
         if (tokensMinted == 0) revert MintAmountZero();
 
         // Apply state.
