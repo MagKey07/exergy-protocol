@@ -384,9 +384,20 @@ V0 (direct contract submission, no adapter) remains supported indefinitely as
 a fallback. A deployment is V1 if its `CHAINLINK_RELAYER_ROLE` is held only by
 adapters and not by direct EOAs (per `MAINNET_HARDENING.md`).
 
-## Open: Smallest unit naming
+## Smallest unit — `erg`
 
-`1 XRGY = 10^18` of the smallest unit. The name of that unit is **TBD** — pending Mag's decision. Like Bitcoin's "satoshi" or Ethereum's "wei", it's a brand choice independent of the protocol math.
+`1 XRGY = 10^18 ergs`. Decided 2026-05-09 by Mag.
 
-Candidates so far: `erg` (CGS unit of energy, sound-symmetric with EXergy), `photon`, `quanta`, `wei` (default fallback). Until decided, dashboard and CLI surfaces use `wei` as a generic placeholder.
+Rationale:
+- **Sound-symmetric with EXergy**: brand cohesion (BTC↔satoshi, ETH↔wei, XRGY↔erg)
+- **Real physical unit**: erg = CGS unit of energy (1 erg = 10⁻⁷ joule), gives the protocol thematic legitimacy with physicists/engineers
+- **Unique**: no collision with existing crypto unit naming
+
+Practical denominations:
+- `1 XRGY = 1,000,000,000,000,000,000 ergs` (1e18)
+- `1 mega-erg = 1,000,000,000,000,000 ergs` (1e15) ≈ 0.001 XRGY
+- `1 giga-erg = 1,000,000,000 ergs` (1e9) ≈ 1 nano-XRGY
+- `1 erg` = atomic settlement unit
+
+Display convention: dashboards show whole `XRGY` by default; CLI tools may surface `ergs` for raw on-chain values.
 
