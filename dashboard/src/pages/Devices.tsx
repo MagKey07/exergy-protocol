@@ -59,13 +59,13 @@ export function Devices(): JSX.Element {
           client.getLogs({
             address: contractAddresses.oracleRouter,
             event: DEVICE_REGISTERED,
-            fromBlock: "earliest",
+            fromBlock: BigInt(import.meta.env.VITE_DEPLOY_BLOCK ?? "0"),
             toBlock: "latest",
           }),
           client.getLogs({
             address: contractAddresses.oracleRouter,
             event: MEASUREMENT_VERIFIED,
-            fromBlock: "earliest",
+            fromBlock: BigInt(import.meta.env.VITE_DEPLOY_BLOCK ?? "0"),
             toBlock: "latest",
           }),
         ]);

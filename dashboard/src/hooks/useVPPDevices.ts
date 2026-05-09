@@ -66,7 +66,7 @@ export function useVPPDevices(vpp: Address | undefined): UseVPPDevicesResult {
           address: contractAddresses.oracleRouter,
           event: DEVICE_REGISTERED,
           args: { vppAddress: vpp },
-          fromBlock: "earliest",
+          fromBlock: BigInt(import.meta.env.VITE_DEPLOY_BLOCK ?? "0"),
           toBlock: "latest",
         });
 
@@ -89,7 +89,7 @@ export function useVPPDevices(vpp: Address | undefined): UseVPPDevicesResult {
           address: contractAddresses.oracleRouter,
           event: MEASUREMENT_VERIFIED,
           args: { vppAddress: vpp },
-          fromBlock: "earliest",
+          fromBlock: BigInt(import.meta.env.VITE_DEPLOY_BLOCK ?? "0"),
           toBlock: "latest",
         });
 

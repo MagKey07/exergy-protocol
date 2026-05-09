@@ -59,7 +59,7 @@ export function useMintEvents(opts?: {
           address: contractAddresses.mintingEngine,
           event: TOKENS_MINTED,
           args: vpp ? { vpp } : undefined,
-          fromBlock: "earliest",
+          fromBlock: BigInt(import.meta.env.VITE_DEPLOY_BLOCK ?? "0"),
           toBlock: "latest",
         });
 
