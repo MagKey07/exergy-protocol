@@ -34,11 +34,20 @@ export function formatToken(value: bigint | undefined, decimals = 18, opts?: { m
   });
 }
 
-/** Format an integer kWh value with group separators. */
+/**
+ * Format a kWh value. Contract stores kWh as 18-decimal scaled (1 kWh = 1e18 wei),
+ * matching the token decimals so multiplication math stays unit-clean. Display
+ * as whole kWh with up to 2 fractional digits.
+ */
 export function formatKwh(kwh: bigint | number | undefined): string {
   if (kwh === undefined) return "—";
-  const n = typeof kwh === "bigint" ? Number(kwh) : kwh;
-  return n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  let num: number;
+  if (typeof kwh === "bigint") {
+    num = Number(formatUnits(kwh, 18));
+  } else {
+    num = kwh;
+  }
+  return num.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
 /**

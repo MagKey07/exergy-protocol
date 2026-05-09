@@ -383,3 +383,10 @@ ops dashboards.
 V0 (direct contract submission, no adapter) remains supported indefinitely as
 a fallback. A deployment is V1 if its `CHAINLINK_RELAYER_ROLE` is held only by
 adapters and not by direct EOAs (per `MAINNET_HARDENING.md`).
+
+## Open: Smallest unit naming
+
+`1 XRGY = 10^18` of the smallest unit. The name of that unit is **TBD** — pending Mag's decision. Like Bitcoin's "satoshi" or Ethereum's "wei", it's a brand choice independent of the protocol math.
+
+Candidates so far: `erg` (CGS unit of energy, sound-symmetric with EXergy), `photon`, `quanta`, `wei` (default fallback). Until decided, dashboard and CLI surfaces use `wei` as a generic placeholder.
+
