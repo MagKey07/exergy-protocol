@@ -33,14 +33,24 @@ export function Overview(): JSX.Element {
   const { data: stats, isLoading: statsLoading } = useProtocolStats();
   const { data: floatingIndex } = useFloatingIndex();
   const { data: era } = useEraRate();
-  const { data: mints, isLoading: mintsLoading } = useMintEvents({ limit: 12 });
+  // We need every mint to derive cumulative-kWh + active-VPP set, but only
+  // surface the most recent 12 in the feed. Fetch a wider window then slice.
+  const { data: allMints, isLoading: mintsLoading } = useMintEvents({ limit: 1_000 });
+  const mints = useMemo(() => allMints.slice(0, 12), [allMints]);
+
+  // `totalEnergyEverVerified` is not exposed on-chain. Sum kwhAmount across
+  // every EnergyMinted event — strictly increasing, matches the spec.
+  const cumulativeKwh = useMemo(() => {
+    if (allMints.length === 0) return undefined;
+    return allMints.reduce<bigint>((acc, m) => acc + m.kwh, 0n);
+  }, [allMints]);
 
   const activeVPPs = useMemo(() => {
     const map = new Map<
       string,
       { vpp: string; mints: number; lastEpoch: bigint; totalKwh: bigint; totalTokens: bigint }
     >();
-    for (const m of mints) {
+    for (const m of allMints) {
       const key = m.vpp.toLowerCase();
       const existing = map.get(key);
       if (existing) {
@@ -59,7 +69,7 @@ export function Overview(): JSX.Element {
       }
     }
     return Array.from(map.values()).sort((a, b) => Number(b.totalTokens - a.totalTokens));
-  }, [mints]);
+  }, [allMints]);
 
   return (
     <>
@@ -113,20 +123,16 @@ export function Overview(): JSX.Element {
         <Stat
           className="lg:col-span-4"
           label="Cumulative energy verified"
-          value={formatKwh(stats.totalEnergyEverVerified)}
+          value={formatKwh(cumulativeKwh)}
           unit="kWh"
-          hint="Lifetime measurement total — strictly increasing."
-          loading={statsLoading}
+          hint="Sum of every verified mint — strictly increasing."
+          loading={mintsLoading}
         />
         <Stat
           className="lg:col-span-4"
           label="Current epoch"
           value={stats.currentEpoch !== undefined ? Number(stats.currentEpoch).toString() : "—"}
-          hint={
-            stats.epochLength !== undefined
-              ? `${Number(stats.epochLength) / 3600}h epoch length`
-              : "24-hour minting cycle"
-          }
+          hint={`${Number(stats.epochLength) / 3600}h epoch length`}
           loading={statsLoading}
         />
       </div>

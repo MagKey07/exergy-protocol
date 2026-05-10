@@ -36,3 +36,8 @@ build
 
 # Test
 coverage
+.vercel
+
+# tsc artifacts from vite.config.ts (the .ts is the only one we ship)
+vite.config.js
+vite.config.d.ts

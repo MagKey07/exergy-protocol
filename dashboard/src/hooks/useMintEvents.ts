@@ -4,6 +4,7 @@ import type { Address, Log } from "viem";
 import { parseAbiItem } from "viem";
 
 import { contractAddresses, contractsConfigured } from "@/wagmi";
+import { getLogsChunked } from "@/lib/chunkedLogs";
 
 /**
  * Recent mint events (per-VPP or network-wide). Drives:
@@ -23,8 +24,8 @@ export interface MintEvent {
   timestamp?: bigint;
 }
 
-const TOKENS_MINTED = parseAbiItem(
-  "event TokensMinted(address indexed vpp, uint256 indexed epoch, uint256 kwh, uint256 tokens)",
+const ENERGY_MINTED = parseAbiItem(
+  "event EnergyMinted(bytes32 indexed deviceId, address indexed vppAddress, uint256 kwhAmount, uint256 tokensMinted, uint256 indexed epoch, uint256 era)",
 );
 
 export function useMintEvents(opts?: {
@@ -55,22 +56,30 @@ export function useMintEvents(opts?: {
 
     (async () => {
       try {
-        const logs = await client.getLogs({
+        const logs = await getLogsChunked(client, {
           address: contractAddresses.mintingEngine,
-          event: TOKENS_MINTED,
-          args: vpp ? { vpp } : undefined,
+          event: ENERGY_MINTED,
+          args: vpp ? { vppAddress: vpp } : undefined,
           fromBlock: BigInt(import.meta.env.VITE_DEPLOY_BLOCK ?? "0"),
-          toBlock: "latest",
         });
 
         const sorted = (logs as Array<
-          Log & { args: { vpp: Address; epoch: bigint; kwh: bigint; tokens: bigint } }
+          Log & {
+            args: {
+              deviceId: `0x${string}`;
+              vppAddress: Address;
+              kwhAmount: bigint;
+              tokensMinted: bigint;
+              epoch: bigint;
+              era: bigint;
+            };
+          }
         >)
           .map<MintEvent>((log) => ({
-            vpp: log.args.vpp,
+            vpp: log.args.vppAddress,
             epoch: log.args.epoch,
-            kwh: log.args.kwh,
-            tokens: log.args.tokens,
+            kwh: log.args.kwhAmount,
+            tokens: log.args.tokensMinted,
             blockNumber: log.blockNumber ?? 0n,
             txHash: log.transactionHash ?? "0x",
           }))

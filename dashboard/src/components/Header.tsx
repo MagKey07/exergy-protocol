@@ -15,13 +15,13 @@ import { ACTIVE_CHAIN, contractsConfigured } from "@/wagmi";
  * Network indicator surfaces deploy status — if contract addresses aren't
  * set, observers see "contracts pending" rather than confusing zero-state.
  */
-const navItems = [
+const navItems: ReadonlyArray<{ to: string; label: string; end?: boolean }> = [
   { to: "/", label: "Overview", end: true },
   { to: "/my-vpp", label: "My VPP" },
   { to: "/devices", label: "Devices" },
   { to: "/settlement", label: "Settlement" },
   { to: "/tokenomics", label: "Tokenomics" },
-] as const;
+];
 
 export function Header(): JSX.Element {
   const { isConnected } = useAccount();

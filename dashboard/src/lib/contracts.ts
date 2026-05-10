@@ -128,70 +128,46 @@ export const mintingEngineAbi = [
   },
   {
     type: "function",
-    name: "totalEnergyEverVerified",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-  {
-    type: "function",
     name: "currentEpoch",
     stateMutability: "view",
     inputs: [],
     outputs: [{ name: "", type: "uint256" }],
   },
-  {
-    type: "function",
-    name: "epochStartTime",
-    stateMutability: "view",
-    inputs: [{ name: "epoch", type: "uint256" }],
-    outputs: [{ name: "", type: "uint64" }],
-  },
-  {
-    type: "function",
-    name: "epochLength",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "uint64" }],
-  },
-  {
-    type: "function",
-    name: "tokensMintedInEra",
-    stateMutability: "view",
-    inputs: [{ name: "era", type: "uint256" }],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-  // Events
+  // Events — keep aligned with MVP/contracts/interfaces/IMintingEngine.sol
   {
     type: "event",
-    name: "EpochSettled",
+    name: "EnergyMinted",
     inputs: [
+      { name: "deviceId", type: "bytes32", indexed: true },
+      { name: "vppAddress", type: "address", indexed: true },
+      { name: "kwhAmount", type: "uint256", indexed: false },
+      { name: "tokensMinted", type: "uint256", indexed: false },
       { name: "epoch", type: "uint256", indexed: true },
-      { name: "totalVerifiedKwh", type: "uint256", indexed: false },
-      { name: "totalTokensMinted", type: "uint256", indexed: false },
-      { name: "merkleRoot", type: "bytes32", indexed: false },
+      { name: "era", type: "uint256", indexed: false },
     ],
   },
   {
     type: "event",
-    name: "TokensMinted",
-    inputs: [
-      { name: "vpp", type: "address", indexed: true },
-      { name: "epoch", type: "uint256", indexed: true },
-      { name: "kwh", type: "uint256", indexed: false },
-      { name: "tokens", type: "uint256", indexed: false },
-    ],
-  },
-  {
-    type: "event",
-    name: "Halved",
+    name: "HalvingTriggered",
     inputs: [
       { name: "newEra", type: "uint256", indexed: true },
-      { name: "newRate", type: "uint256", indexed: false },
+      { name: "newRateNumerator", type: "uint256", indexed: false },
       { name: "totalSupplyAtHalving", type: "uint256", indexed: false },
     ],
   },
+  {
+    type: "event",
+    name: "EpochSealed",
+    inputs: [{ name: "epoch", type: "uint256", indexed: true }],
+  },
 ] as const satisfies Abi;
+
+/**
+ * `EPOCH_DURATION` is a `uint256 public constant = 1 days` on the contract,
+ * not a callable view function. Surface it as a known constant so the UI
+ * does not need an RPC roundtrip for what never changes.
+ */
+export const EPOCH_DURATION_SECONDS = 86_400n;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // OracleRouter — device registry, measurement submission

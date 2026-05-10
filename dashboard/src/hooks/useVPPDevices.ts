@@ -4,6 +4,7 @@ import type { Address, Log } from "viem";
 import { parseAbiItem } from "viem";
 
 import { contractAddresses, contractsConfigured } from "@/wagmi";
+import { getLogsChunked } from "@/lib/chunkedLogs";
 
 /**
  * Reconstruct a VPP's device fleet from on-chain events.
@@ -62,12 +63,11 @@ export function useVPPDevices(vpp: Address | undefined): UseVPPDevicesResult {
     (async () => {
       try {
         // 1. Pull all DeviceRegistered events for this VPP.
-        const registerLogs = await client.getLogs({
+        const registerLogs = await getLogsChunked(client, {
           address: contractAddresses.oracleRouter,
           event: DEVICE_REGISTERED,
           args: { vppAddress: vpp },
           fromBlock: BigInt(import.meta.env.VITE_DEPLOY_BLOCK ?? "0"),
-          toBlock: "latest",
         });
 
         const devices = new Map<string, DeviceRow>();
@@ -85,12 +85,11 @@ export function useVPPDevices(vpp: Address | undefined): UseVPPDevicesResult {
         // 2. For each device, resolve the latest measurement log to populate
         //    "last reported kWh" + cycle count. We could getLogs once for the
         //    whole VPP, but per-device keeps memory bounded for large fleets.
-        const measurementLogs = await client.getLogs({
+        const measurementLogs = await getLogsChunked(client, {
           address: contractAddresses.oracleRouter,
           event: MEASUREMENT_VERIFIED,
           args: { vppAddress: vpp },
           fromBlock: BigInt(import.meta.env.VITE_DEPLOY_BLOCK ?? "0"),
-          toBlock: "latest",
         });
 
         for (const log of measurementLogs as Array<
