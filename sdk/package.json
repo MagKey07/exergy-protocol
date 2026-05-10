@@ -1,0 +1,35 @@
+{
+  "name": "@exergy/vpp-connector-sdk",
+  "version": "0.1.0",
+  "description": "Minimal TypeScript SDK for VPP operators integrating against the Exergy Protocol on Arbitrum Sepolia.",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "example:submit": "ts-node examples/submit-one-packet.ts"
+  },
+  "dependencies": {
+    "ethers": "^6.13.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "dotenv": "^16.6.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.4"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MagKey07/exergy-protocol",
+    "directory": "MVP/sdk"
+  }
+}
