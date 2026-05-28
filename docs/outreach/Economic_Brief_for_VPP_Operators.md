@@ -216,7 +216,7 @@ We are not asking for exclusivity. You can integrate with anyone else. The proto
 
 | What | Where to verify |
 |------|-----------------|
-| Live dashboard (operator + observer view) | https://exergy-dashboard.vercel.app — total supply, floating index, current era, halving progress, recent mints, settlement flows. Reads Arbitrum Sepolia in real time. |
+| Live dashboard (operator + observer view) | https://dashboard.keyenergy.io — total supply, floating index, current era, halving progress, recent mints, settlement flows. Reads Arbitrum Sepolia in real time. |
 | Smart contracts deployed live | Arbiscan: https://sepolia.arbiscan.io/address/0x8557e39A372FAC1811b2171207B669975B648fDB |
 | Floating index computed on-chain | `MintingEngine.getFloatingIndex()` — call from any block explorer, or watch on the dashboard |
 | First mints, with fee distribution, on public testnet | Tx: 0xa02a0c743ebe...26 (5 kWh mint, 0.05 XRGY fee distributed) |
@@ -293,5 +293,5 @@ info@keyenergy.io
 SAFE investor materials: separate channel for accredited investors via AngelList.
 
 Repository: https://github.com/MagKey07/exergy-protocol
-Live dashboard: https://exergy-dashboard.vercel.app
+Live dashboard: https://dashboard.keyenergy.io
 Sepolia state: https://sepolia.arbiscan.io/address/0x8557e39A372FAC1811b2171207B669975B648fDB

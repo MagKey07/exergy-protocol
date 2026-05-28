@@ -63,7 +63,7 @@ Five contracts, all deployed on Arbitrum Sepolia at the addresses below. Four of
 
 **Network:** Arbitrum Sepolia (chainId `421614`). Public RPC: `https://sepolia-rollup.arbitrum.io/rpc`. Block explorer: `https://sepolia.arbiscan.io/`.
 
-**Live state:** [exergy-dashboard.vercel.app](https://exergy-dashboard.vercel.app) — total supply, floating index, era, recent mints.
+**Live state:** [dashboard.keyenergy.io](https://dashboard.keyenergy.io) — total supply, floating index, era, recent mints.
 
 You will interact with three contracts during integration:
 
@@ -484,7 +484,7 @@ function isMeasurementProcessed(bytes32 packetHash) external view returns (bool)
 function mintingFeeBps() external view returns (uint16);  // currently 100 = 1%
 ```
 
-For a one-stop public view of network state without RPC calls of your own, use the dashboard at [exergy-dashboard.vercel.app](https://exergy-dashboard.vercel.app).
+For a one-stop public view of network state without RPC calls of your own, use the dashboard at [dashboard.keyenergy.io](https://dashboard.keyenergy.io).
 
 For dispute and audit trails, every accepted packet emits `MeasurementVerified` and `EnergyMinted`. Every rejected packet emits `AnomalyRejected(deviceId, vppAddress, kwhAmount, cumulativeCycles, reason)` BEFORE the revert, so you can index rejection reasons even though the transaction failed (the events from a reverted transaction are not persisted, but `AnomalyRejected` is emitted in the path that completes successfully — the rejection categories that emit it are documented next).
 
@@ -642,7 +642,7 @@ For a complete worked example that covers registration + approval + first mint e
 
 - **Bugs and questions in the integration:** [github.com/MagKey07/exergy-protocol/issues](https://github.com/MagKey07/exergy-protocol/issues). Tag with `vpp-integration`.
 - **Role grants and pilot coordination:** `info@keyenergy.io`. Include your VPP cloud wallet address, preferred `vppId` string, and a list of device labels you want pre-registered.
-- **Live network state:** [exergy-dashboard.vercel.app](https://exergy-dashboard.vercel.app).
+- **Live network state:** [dashboard.keyenergy.io](https://dashboard.keyenergy.io).
 - **Contract source for audit:** [github.com/MagKey07/exergy-protocol/tree/main/MVP/contracts](https://github.com/MagKey07/exergy-protocol/tree/main/MVP/contracts). MIT licensed.
 - **Smoke simulator (working reference for the full pipeline):** [github.com/MagKey07/exergy-protocol/tree/main/MVP/oracle-simulator](https://github.com/MagKey07/exergy-protocol/tree/main/MVP/oracle-simulator).
 - **Economic Brief** (the broader "why integrate" document): [docs/outreach/Economic_Brief_for_VPP_Operators.md](outreach/Economic_Brief_for_VPP_Operators.md).
