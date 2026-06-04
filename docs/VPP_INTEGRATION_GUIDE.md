@@ -192,6 +192,23 @@ Equivalent in Solidity terms: `keccak256(abi.encodePacked(deviceAddress))`. If y
 
 In Phase 1 (Q3-Q4 2026), self-service device registration via signed off-chain claims is on the roadmap — your VPP cloud will be able to register devices in batches without admin involvement.
 
+### Wallet Architecture: Your Choice
+
+Exergy is neutral to how your VPP organizes ownership. The `vppAddress` parameter you provide when registering each device determines where minted $XRGY tokens go for that device. Different VPPs use different models:
+
+**Single corporate wallet (Phase 0 pilot default — simplest).**
+Register all devices under one wallet your VPP entity controls. Mints accumulate in that wallet. You distribute to participants off-chain — via DAO governance, transparent ledger, internal accounting, or whatever fits your community structure. This is the simplest onboarding model and works well for cooperatives, aggregators, and pilot deployments.
+
+**Per-participant wallets (full decentralization).**
+Register each device with the individual participant's wallet. Mints go directly to the participant whose battery did the work — no intermediary, no off-chain distribution. Suitable for VPPs whose participants want direct ownership of their tokens. Slightly more onboarding complexity (each participant needs a wallet + approval flow).
+
+**Hybrid.**
+Mix the two — some devices under treasury, some under individual wallets. The protocol doesn't enforce a single model.
+
+The choice is made at the moment you call `registerDevice` for each device. There is no protocol-level constraint. Switching later requires re-registering the affected devices (admin operation).
+
+**For Phase 0 pilots we recommend starting with the single corporate wallet model** — fewer moving parts, faster onboarding, validates the protocol mechanics (Proof-of-Charge, market, halving) before introducing wallet-management UX complexity. Phase 1+ Chainlink deployment, better UX tooling, and audit make per-participant registration ergonomic if desired.
+
 ### Step 4: Approve Settlement to take the 1% fee
 
 Once per VPP cloud wallet, on the `XRGYToken` contract:
