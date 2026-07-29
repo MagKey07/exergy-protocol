@@ -179,7 +179,6 @@ Open-source from day one is a deliberate design constraint, not a marketing post
 ## Background reading
 
 - **SSRN paper #6500878** — Economic Theory of Relativity (ETR), the formal monetary argument behind sectoral currencies. <https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6500878>
-- **Cambridge Journal of Economics, submission CJE-2026-194** — peer-reviewed companion paper, currently in administrative processing.
 - Book in progress: *A Loading Dose of Sense* (Magomed Kiev) — the long-form articulation of the monetary thesis.
 
 ---

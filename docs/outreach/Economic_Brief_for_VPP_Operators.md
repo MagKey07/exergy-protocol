@@ -225,7 +225,6 @@ We are not asking for exclusivity. You can integrate with anyone else. The proto
 | Proof-of-Wear (Sybil resistance via cycle tracking) | `MintingEngine._validateAndUpdateProofOfWear` — verified by rejected fake high-cycle packets |
 | Open-source, MIT licensed | https://github.com/MagKey07/exergy-protocol |
 | Academic foundation | SSRN: https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6500878 |
-| Cambridge Journal submission under peer review | Manuscript ID: CJE-2026-194 |
 
 Every line above is a public artifact. None of it is a promise. The protocol is built and running. The math is enforced by the deployed contracts. Your tech team can read every line of the code we wrote — and your operations team can watch the live network state on the dashboard without writing a single line of code.
 
