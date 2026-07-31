@@ -8,7 +8,7 @@ A working testnet implementation of a sectoral monetary system: tokens are minte
 
 ## The thesis
 
-**Universal money is a bug of civilization.** One currency for bread, oil, labor, gold, and computation warps value away from merit toward mass. The fix is not another reform of fiat — it is replacement: each economic sector should have its own monetary unit, backed by the fundamental asset of that sector. Exergy is the first working example. If it holds, the model spreads to water, compute, grain, and beyond. The full argument lives in the SSRN paper (#6500878) and in [`05_System/CORE_THESIS.md`](../05_System/CORE_THESIS.md).
+**Universal money is a bug of civilization.** One currency for bread, oil, labor, gold, and computation warps value away from merit toward mass. The fix is not another reform of fiat — it is replacement: each economic sector should have its own monetary unit, backed by the fundamental asset of that sector. Exergy is the first working example. If it holds, the model spreads to water, compute, grain, and beyond. The full argument lives in the [SSRN paper #6500878](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6500878).
 
 **Tokens come from energy, not from issuance.** $XRGY genesis supply is zero. The only path to new tokens is `MintingEngine.commitVerifiedEnergy`, which itself is gated to the OracleRouter, which itself rejects any measurement packet that lacks both a device-level ECDSA signature and a VPP-cloud co-signature (the Anti-Simulation Lock). Every minted token corresponds to a real kWh sitting in a real battery, attested to by a tamper-resistant chain of cryptographic signatures. The minting rate halves every 1,000,000 tokens, so each successive token is denser in stored energy than its predecessors. Halving is driven by physics, not by adoption.
 
@@ -134,15 +134,14 @@ In Phase 0 the first three boxes are simulated. Phase 1 replaces them with real 
 
 ## Reading order for the codebase
 
-1. [`05_System/CORE_THESIS.md`](../05_System/CORE_THESIS.md) — what Exergy actually is. Read first.
-2. [`01_Pitch/Technical_Blueprint.md`](../01_Pitch/Technical_Blueprint.md) — the formal technical specification.
-3. [`docs/00_ARCHITECTURE.md`](docs/00_ARCHITECTURE.md) — single-page system overview.
-4. `contracts/XRGYToken.sol` — the smallest contract; sets the immutability constraints.
-5. `contracts/MintingEngine.sol` — halving math, epoch sealing, floating index.
-6. `contracts/OracleRouter.sol` — the trust boundary; dual-signature verification.
-7. `contracts/Settlement.sol` — fee math and the no-burn invariant.
-8. `oracle-simulator/src/index.ts` — drives the demo end-to-end.
-9. `test/integration/EndToEnd.t.ts` — what a passing protocol cycle looks like.
+1. [SSRN paper #6500878](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6500878) — the monetary argument this protocol implements. Read first for the *why*.
+2. [`docs/00_ARCHITECTURE.md`](docs/00_ARCHITECTURE.md) — single-page system overview. Read first for the *how*.
+3. `contracts/XRGYToken.sol` — the smallest contract; sets the immutability constraints.
+4. `contracts/MintingEngine.sol` — halving math, epoch sealing, floating index.
+5. `contracts/OracleRouter.sol` — the trust boundary; dual-signature verification.
+6. `contracts/Settlement.sol` — fee math and the no-burn invariant.
+7. `oracle-simulator/src/index.ts` — drives the demo end-to-end.
+8. `test/integration/EndToEnd.t.ts` — what a passing protocol cycle looks like.
 
 ---
 
