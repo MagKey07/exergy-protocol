@@ -235,7 +235,8 @@ contract OracleRouter is
             rec.vppAddress,
             packet.kwhAmount,
             packet.cumulativeCycles,
-            packet.storageCapacity
+            packet.storageCapacity,
+            packet.chargeLevelPercent
         );
 
         emit MeasurementVerified(packet.deviceId, rec.vppAddress, packet.kwhAmount, packet.timestamp, epoch);

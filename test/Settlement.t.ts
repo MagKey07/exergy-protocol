@@ -56,6 +56,7 @@ async function seedTokens(
       kwh,
       1, // cumulativeCycles
       10n ** 12n, // storageCapacity = 1 TWh
+      100, // chargeLevelPercent — seed device reports itself full
     );
   await ethers.provider.send("hardhat_stopImpersonatingAccount", [oracleAddr]);
 }

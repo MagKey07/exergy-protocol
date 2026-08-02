@@ -63,7 +63,11 @@ async function mintAsWithCycles(
   vppAddress: string,
   kwh: bigint,
   cumulativeCycles: number,
-  storageCapacity: bigint
+  storageCapacity: bigint,
+  /** Attested state of charge. Defaults to 100% — these tests predate pool-state
+   *  accounting and only care about minting, so "device reports itself full" keeps
+   *  their intent intact. See test/PoolAccounting.t.ts for the pool behaviour. */
+  chargeLevelPercent: number = 100
 ) {
   await ethers.provider.send("hardhat_impersonateAccount", [oracleRouterAddr]);
   await ethers.provider.send("hardhat_setBalance", [
@@ -73,7 +77,7 @@ async function mintAsWithCycles(
   const oracleSigner = await ethers.getSigner(oracleRouterAddr);
   const tx = await mintingEngine
     .connect(oracleSigner)
-    .commitVerifiedEnergy(deviceId, vppAddress, kwh, cumulativeCycles, storageCapacity);
+    .commitVerifiedEnergy(deviceId, vppAddress, kwh, cumulativeCycles, storageCapacity, chargeLevelPercent);
   await ethers.provider.send("hardhat_stopImpersonatingAccount", [oracleRouterAddr]);
   return tx;
 }
@@ -211,22 +215,32 @@ describe("MintingEngine", () => {
       expect(await mintingEngine.getFloatingIndex()).to.equal(0n);
     });
 
-    it("equals 1.0 when totalVerifiedEnergyInStorage == totalSupply (in token units)", async () => {
+    it("equals 1.0 when stored energy equals supply (in token units)", async () => {
       const { mintingEngine, oracleRouter, vppA } = await loadFixture(deployFullSystem);
-      // Era 0: kWh=tokens 1:1, so storage and supply move together.
-      await mintAs(
+
+      // POOL ACCOUNTING CHANGE: the pool is no longer the sum of minted kWh — it is what
+      // the device reports holding (capacity × state of charge). To land the 1:1 case we
+      // therefore pick a capacity and charge level that make stored energy equal the kWh
+      // credited for minting, instead of relying on mint-side bookkeeping.
+      // See docs/TECH_DEBT_pool_accounting.md and test/PoolAccounting.t.ts.
+      const CAPACITY = 100n; // integer kWh, as this suite's helpers use throughout
+      await mintAsWithCycles(
         mintingEngine,
         await oracleRouter.getAddress(),
         ethers.id("d"),
         await vppA.getAddress(),
-        100n
+        100n, // kWh credited → 100 tokens at era-0 rate
+        1, // cumulativeCycles
+        CAPACITY,
+        100 // device reports itself full → stored = 100 kWh
       );
-      // floatingIndex = totalEnergy(kWh, integer) * 1e18 / totalSupply(wei)
-      // 100 * 1e18 / (100 * 1e18) = 1e18 → "1.0" in 18-decimal fixed point
+
+      // floatingIndex = storedEnergy * 1e18 / totalSupply(wei) = 100 * 1e18 / (100 * 1e18)
+      expect(await mintingEngine.totalVerifiedEnergyInStorage()).to.equal(CAPACITY);
       expect(await mintingEngine.getFloatingIndex()).to.equal(ONE_TOKEN);
     });
 
-    it("decreases when energy consumption is recorded (no burn)", async () => {
+    it("is NOT moved by recordEnergyConsumption — only device reports move the pool", async () => {
       const { mintingEngine, oracleRouter, settlement, vppA } = await loadFixture(
         deployFullSystem
       );
@@ -255,13 +269,23 @@ describe("MintingEngine", () => {
         await settlement.getAddress(),
       ]);
 
-      // totalTokensMinted is monotonic — must be unchanged.
+      // totalTokensMinted is monotonic — must be unchanged. (NO-BURN, unchanged.)
       expect(await mintingEngine.totalTokensMinted()).to.equal(supplyBefore);
-      // Floating index drops because numerator (energy) shrunk while denominator (supply) didn't.
-      expect(await mintingEngine.getFloatingIndex()).to.be.lt(indexBefore);
+
+      // POOL ACCOUNTING CHANGE: this used to assert the index dropped here. It no longer
+      // does, deliberately. Energy delivered under a settlement leaves a physical battery,
+      // and that battery's next signed packet reports the lower state of charge — which is
+      // what moves the pool. Subtracting here as well would count the same kWh out twice.
+      // See docs/TECH_DEBT_pool_accounting.md.
+      expect(await mintingEngine.getFloatingIndex()).to.equal(indexBefore);
     });
 
-    it("recordEnergyConsumption reverts if amount > totalVerifiedEnergyInStorage", async () => {
+    it("recordEnergyConsumption never reverts on amount — it no longer debits the pool", async () => {
+      // POOL ACCOUNTING CHANGE: this used to revert with EnergyUnderflow when Settlement
+      // reported more kWh than the pool held. That guard existed because the call debited
+      // the pool directly. It no longer does, so there is nothing to underflow — and a
+      // revert here would block a legitimate settlement over a bookkeeping artefact.
+      // See docs/TECH_DEBT_pool_accounting.md.
       const { mintingEngine, settlement } = await loadFixture(deployFullSystem);
       await ethers.provider.send("hardhat_impersonateAccount", [
         await settlement.getAddress(),
@@ -271,9 +295,13 @@ describe("MintingEngine", () => {
         "0x56BC75E2D63100000",
       ]);
       const settlementSigner = await ethers.getSigner(await settlement.getAddress());
+
+      // Pool is empty; report consumption anyway. Must succeed and leave the pool at zero.
       await expect(
         mintingEngine.connect(settlementSigner).recordEnergyConsumption(1n)
-      ).to.be.revertedWithCustomError(mintingEngine, "EnergyUnderflow");
+      ).to.emit(mintingEngine, "EnergyConsumptionReported");
+      expect(await mintingEngine.totalVerifiedEnergyInStorage()).to.equal(0n);
+
       await ethers.provider.send("hardhat_stopImpersonatingAccount", [
         await settlement.getAddress(),
       ]);
@@ -341,7 +369,8 @@ describe("MintingEngine", () => {
             await vppA.getAddress(),
             1n,
             1, // cumulativeCycles
-            DEFAULT_BIG_CAPACITY
+            DEFAULT_BIG_CAPACITY,
+            100 // chargeLevelPercent
           )
       ).to.be.revertedWithCustomError(mintingEngine, "NotOracleRouter");
     });

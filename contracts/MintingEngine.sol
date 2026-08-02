@@ -214,7 +214,8 @@ contract MintingEngine is
         address vppAddress,
         uint256 kwhAmount,
         uint32 cumulativeCycles,
-        uint256 storageCapacity
+        uint256 storageCapacity,
+        uint8 chargeLevelPercent
     ) external override whenNotPaused nonReentrant returns (uint256 tokensMinted) {
         if (msg.sender != oracleRouter) revert NotOracleRouter();
         if (vppAddress == address(0)) revert ZeroAddress();
@@ -249,7 +250,14 @@ contract MintingEngine is
         e.totalVerifiedKwh += kwhAmount;
         e.totalTokensMinted += tokensMinted;
 
-        totalVerifiedEnergyInStorage += kwhAmount;
+        // POOL ACCOUNTING (see docs/TECH_DEBT_pool_accounting.md).
+        // The pool is NOT a running tally of mints minus settlements — that only ever
+        // subtracted energy that left via Settlement, and so ignored self-consumption,
+        // self-discharge, capacity fade and devices that simply went silent. It is the
+        // sum of what devices currently report holding. `chargeLevelPercent` is part of
+        // the packet already signed by the device AND co-signed by the VPP cloud, so
+        // reading it introduces no new trust assumption.
+        _syncDeviceStoredEnergy(deviceId, storageCapacity, chargeLevelPercent);
         totalTokensMinted += tokensMinted;
 
         // Mint tokens to the VPP recipient.
@@ -283,11 +291,23 @@ contract MintingEngine is
     function recordEnergyConsumption(uint256 kwhConsumed) external override whenNotPaused {
         if (msg.sender != address(settlement)) revert NotSettlement();
         if (kwhConsumed == 0) return;
-        if (kwhConsumed > totalVerifiedEnergyInStorage) revert EnergyUnderflow();
-        unchecked {
-            totalVerifiedEnergyInStorage -= kwhConsumed;
-        }
-        emit TotalVerifiedEnergyChanged(-int256(kwhConsumed), totalVerifiedEnergyInStorage);
+
+        // NO LONGER ADJUSTS THE POOL — deliberately. See docs/TECH_DEBT_pool_accounting.md.
+        //
+        // The pool is now the sum of what devices currently report holding. Energy
+        // delivered under a settlement leaves a physical battery, and that battery's very
+        // next signed packet reports the lower state of charge — which moves the pool via
+        // _syncDeviceStoredEnergy. Subtracting here as well would double-count the same
+        // kWh: once against the settlement, once against the device's own report.
+        //
+        // The trade is deliberate: a brief overstatement between settlement and the next
+        // packet, versus a permanent double-subtraction. Transient error converges;
+        // double-counting does not.
+        //
+        // Kept as a live entry point (rather than removed) so ISettlement and the deployed
+        // Settlement contract need no coordinated change, and so consumption stays
+        // observable on-chain for analytics and reconciliation.
+        emit EnergyConsumptionReported(kwhConsumed, totalVerifiedEnergyInStorage);
     }
 
     // ---------------------------------------------------------------------
@@ -449,6 +469,48 @@ contract MintingEngine is
      *      cumulativeCycles, reason)` BEFORE the revert so off-chain monitors can index
      *      Sybil patterns without re-executing.
      */
+    /**
+     * @dev Bring `totalVerifiedEnergyInStorage` in line with what this device now reports
+     *      holding, by applying only the delta against its own previous report.
+     *
+     *      O(1) — no iteration over devices, so gas does not grow with network size.
+     *
+     *      Why a delta and not a re-sum: the pool must stay a single storage word that
+     *      any reader (SDK, dashboard) can fetch in one call. Each device owns its slice;
+     *      changing that slice moves the total by exactly the difference.
+     */
+    function _syncDeviceStoredEnergy(
+        bytes32 deviceId,
+        uint256 storageCapacity,
+        uint8 chargeLevelPercent
+    ) internal {
+        if (chargeLevelPercent > 100) revert InvalidChargeLevel(chargeLevelPercent);
+
+        DeviceCycleState storage state = _deviceCycleState[deviceId];
+
+        uint256 nowHeld = (storageCapacity * uint256(chargeLevelPercent)) / 100;
+        uint256 previouslyHeld = state.lastReportedEnergy;
+        state.lastReportedEnergy = nowHeld;
+
+        if (nowHeld == previouslyHeld) return;
+
+        int256 delta;
+        if (nowHeld > previouslyHeld) {
+            totalVerifiedEnergyInStorage += (nowHeld - previouslyHeld);
+            delta = int256(nowHeld - previouslyHeld);
+        } else {
+            uint256 drop = previouslyHeld - nowHeld;
+            // Defensive: an upgraded contract may hold pre-migration entries whose
+            // lastReportedEnergy is 0 while the legacy running total is not yet resynced.
+            // Never revert inside the mint path over an accounting artefact — clamp.
+            if (drop > totalVerifiedEnergyInStorage) drop = totalVerifiedEnergyInStorage;
+            totalVerifiedEnergyInStorage -= drop;
+            delta = -int256(drop);
+        }
+
+        emit TotalVerifiedEnergyChanged(delta, totalVerifiedEnergyInStorage);
+    }
+
     function _validateAndUpdateProofOfWear(
         bytes32 deviceId,
         address vppAddress,

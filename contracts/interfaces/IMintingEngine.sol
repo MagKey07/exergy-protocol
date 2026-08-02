@@ -46,6 +46,16 @@ interface IMintingEngine {
         uint64 lastEpoch;
         uint256 storageCapacity;
         bool initialized;
+        /// @notice Energy this device last reported holding (18-dec kWh), derived from
+        ///         `storageCapacity * chargeLevelPercent / 100`. Used to keep
+        ///         `totalVerifiedEnergyInStorage` equal to what devices currently hold
+        ///         rather than to a running tally of mints minus settlements.
+        ///         NOTE (upgrade): appended at the end of the struct — safe for mapping
+        ///         storage. Entries written before the upgrade read 0 here, so the legacy
+        ///         running total must be zeroed once via `adminSetTotalVerifiedEnergy(0)`
+        ///         and allowed to rebuild from incoming packets. Skipping that step leaves
+        ///         the old tally and the new per-device sum added together.
+        uint256 lastReportedEnergy;
     }
 
     /// @notice Verified energy was added; tokens minted to VPP recipient.
@@ -133,6 +143,17 @@ interface IMintingEngine {
      *      fit an inflated kWh under the energy-vs-capacity check.
      */
     error CapacityShrinkRejected(uint256 priorCapacity, uint256 attestedCapacity);
+
+    /// @notice Attested state of charge exceeds 100%. A battery cannot be more than full.
+    error InvalidChargeLevel(uint8 chargeLevelPercent);
+
+    /**
+     * @notice Settlement reported energy leaving storage. Informational only: the pool
+     *         itself moves when the discharging device sends its next signed packet.
+     * @param kwhConsumed Quantity reported by Settlement.
+     * @param totalVerifiedEnergyInStorage Pool at the time of the report (unchanged by it).
+     */
+    event EnergyConsumptionReported(uint256 kwhConsumed, uint256 totalVerifiedEnergyInStorage);
     /// @notice Packet's cumulativeCycles is lower than the last accepted value (monotonicity).
     error CycleCounterRegression(uint32 priorCycles, uint32 attestedCycles);
 
@@ -163,7 +184,8 @@ interface IMintingEngine {
         address vppAddress,
         uint256 kwhAmount,
         uint32 cumulativeCycles,
-        uint256 storageCapacity
+        uint256 storageCapacity,
+        uint8 chargeLevelPercent
     ) external returns (uint256 tokensMinted);
 
     /**

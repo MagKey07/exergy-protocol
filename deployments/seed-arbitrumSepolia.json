@@ -1,0 +1,135 @@
+{
+  "network": "arbitrumSepolia",
+  "vpps": [
+    {
+      "label": "Texas Solar VPP",
+      "address": "0xB051233B5667D34E0dE0a85B64d52556D6391957",
+      "privateKey": "0x5fe382d86a3e59a9912cb6e158c09a79c54dfa66884a8de07ffdd93536685d1a",
+      "region": "us-tx",
+      "devices": [
+        {
+          "deviceId": "0xc40b10f625b148048f91d5beb87fec72d1cf5ea3dcc629c753006df09ca4c1cd",
+          "privateKey": "0x81c6022521427679570b2e210fc1e4789271898f88c4938d265e71ad813b4b98",
+          "pubKeyHash": "0xb5bf3c2d1c4ab50e70c70b1cd0dd36c97f71f4bce5ea7f45c4ba4d8551d9ae9e",
+          "capacityKwh": 13500,
+          "initialChargePercent": 50
+        },
+        {
+          "deviceId": "0x39101013309e5ae0abe65cb1683fcbd98d2da93bffdf9a772881a1fab6d36706",
+          "privateKey": "0x357f2774e6e4c2e3471389eb7e3e1a1d419b49de671d3078624b5a1f76209699",
+          "pubKeyHash": "0x76a993011215894ae98519c9cc639e528c9f59de671cf63f77d127cfd6baacfd",
+          "capacityKwh": 14500,
+          "initialChargePercent": 55
+        },
+        {
+          "deviceId": "0x8493f8c80b11ea18c56d573249cc70c07f447cce38e4d7e98bd06e71cd9e37b4",
+          "privateKey": "0xf7e5306fb03e024c02eb3d3f318042f1a3bee9dedde44589194be266de2f388e",
+          "pubKeyHash": "0xc4db419d23449fe79960403954dfd580b5171e988de6bd441a07979728e205c3",
+          "capacityKwh": 15500,
+          "initialChargePercent": 60
+        },
+        {
+          "deviceId": "0xc237ef8222d8e7e74adc00f92b6f3d22da956cf43ecd785926f5002078ce5e0b",
+          "privateKey": "0x945cbd02468b3974ac55991664295a6049e832e08e2738357cc5e2adb0cd03b4",
+          "pubKeyHash": "0x660ad48b0be2034fc7f9112004f6a084555c0e0aa667abbf2eb0484233dabd3a",
+          "capacityKwh": 16500,
+          "initialChargePercent": 65
+        },
+        {
+          "deviceId": "0x520ddd1e7ba2236358030e5a2303b0d587c4a7ecce4275bb5a8f2fa27e2183c6",
+          "privateKey": "0x7dc18bd2949a78cd5d3d3170bb57dfc2e03f8b9eeb3fe7e3771cd034207fdcb8",
+          "pubKeyHash": "0xe09ae7f6192b853dee99f0da7e04e951d8c58827c60eaeab7a86ae386dc82954",
+          "capacityKwh": 17500,
+          "initialChargePercent": 70
+        }
+      ]
+    },
+    {
+      "label": "Berlin Mixed VPP",
+      "address": "0x63e19EaC170E7030E02D07e93D1009f37a057A96",
+      "privateKey": "0xbab9fb46367c97829601fbe60e3391486583b8b0697c73c0a7b2518d14266322",
+      "region": "eu-de",
+      "devices": [
+        {
+          "deviceId": "0xff6b0d11c083804e60bf1b53ff7c6b98578764e5c1d5d4121c262011b1fa0a91",
+          "privateKey": "0x6beeb8dac3aa90a5bcc95f230a42f670c47dc91ac3a7c75c7c82d82cc7246786",
+          "pubKeyHash": "0xe7ccd6f191def28580889907f3eea6dddfb4b3326d7a7e28fb532fb3668567b0",
+          "capacityKwh": 13500,
+          "initialChargePercent": 50
+        },
+        {
+          "deviceId": "0xe9d1f07c716143dfa812f8ba2003e93cfecb6338d6f023bece43fb1effe1adc0",
+          "privateKey": "0x17101e14d36deaa2eb8278273c75f543e8212e9d905536c55fd81ca9019ea40d",
+          "pubKeyHash": "0x78b5e280c314f72518f36f0bf52514433b0a6de36c111ae7fe5284c6e0c8ef23",
+          "capacityKwh": 14500,
+          "initialChargePercent": 55
+        },
+        {
+          "deviceId": "0xb87b6d8a0cb924254409ab6be2b55f55bcf0e95a9a62d3811d776a1989191afd",
+          "privateKey": "0x489d75119640966516aeeae5d7cc5ec4823ca6466101f97de197fe7af1e48ce8",
+          "pubKeyHash": "0x400f215155c2f43c144161026b517d1b488ee2c2b499fd93d4952a9e9d8d2dd8",
+          "capacityKwh": 15500,
+          "initialChargePercent": 60
+        },
+        {
+          "deviceId": "0xc91cb90bb67b289e8f77e951ee9fddb3db9ade3ac38b86f3bab393c6626e4f15",
+          "privateKey": "0xea34c8cad23d1f52da1b07b0d09edfca4189fe84768acb2a5f08f7db4ef0d642",
+          "pubKeyHash": "0xb93750068ceae2f39af56dd2c34bc1b90574b1ead4b30b7b38e364ed16266c1e",
+          "capacityKwh": 16500,
+          "initialChargePercent": 65
+        },
+        {
+          "deviceId": "0x94ecd802cc02120c7ee750b0c43273a5102d8f7e0a56f0e092cad03445171ab0",
+          "privateKey": "0x6e17df5c3216b8d201ac804bff96c9eecee5476d2d38fcc42a2bc7eafa513658",
+          "pubKeyHash": "0xf16936b2d69aedc1db7a10c2148fa3fe1e41ca1c548d50a4e0bfe61c733ac2d6",
+          "capacityKwh": 17500,
+          "initialChargePercent": 70
+        }
+      ]
+    },
+    {
+      "label": "Sydney Storage VPP",
+      "address": "0xeC2E2058bE85A47daDe8Cf4Dc79B0557210de9f4",
+      "privateKey": "0x0000aebe7b808b84a868dd594794205adbeae3fc0d2dfa19dc22d8ed5681cf71",
+      "region": "au-nsw",
+      "devices": [
+        {
+          "deviceId": "0x2ae31709248024d2412380b892b81a916eab8b71dc1532184994c57017226656",
+          "privateKey": "0xaeace8d972996426b8fdd37e78d2f50df9f8bf0ad80bab08b51a2da40f879089",
+          "pubKeyHash": "0xf0b6e1c20a3f9ecfe9c4c3f8c0966ac7e10a6adcb88369a3da137f84f82b13c6",
+          "capacityKwh": 13500,
+          "initialChargePercent": 50
+        },
+        {
+          "deviceId": "0xdafcc953228e3bffa4fed65beeef93c03fec1408af4c198a40f18865b347990f",
+          "privateKey": "0x63890b936a9dc88af50eaa765305eb6e6acac3c8cbf1e22eb246087f946b9b20",
+          "pubKeyHash": "0x974aa4c475294e084ef9ca9d690df8afbaa0f14f8e5099278cdaf87553728741",
+          "capacityKwh": 14500,
+          "initialChargePercent": 55
+        },
+        {
+          "deviceId": "0x34e9152831b542045f801bbf5058cb33bc8069f73cb7a4c47dd3784b8671aa4f",
+          "privateKey": "0xad18011d55918a49c1f7ae9b4713f22ece52fde3c607ce20139187ddc8d8eb04",
+          "pubKeyHash": "0xd01d459b40ea73fc3af30e2fdf3024e10ce4774148cb8ec8e858060909e9b643",
+          "capacityKwh": 15500,
+          "initialChargePercent": 60
+        },
+        {
+          "deviceId": "0xdcc9898e696ea3ded6f687c4bb0cf7fe78586809471751b98aa10c58067ac206",
+          "privateKey": "0xce21441d349832ec86ee54891d2e48b6ffe2253697b9d0cedaa8e200dda5803a",
+          "pubKeyHash": "0x187e567e221bcb80637c9477c3755ee81f7dc8378fcc2fc8c8aeba73f757aee1",
+          "capacityKwh": 16500,
+          "initialChargePercent": 65
+        },
+        {
+          "deviceId": "0xde6b2769cdd052de6fcbc9a90cd9370034634838d110a642cf87964d4990d4cd",
+          "privateKey": "0x17a65092b6c4ea73882727a56e1c714c6d55a57b8badfb0defaf160b91c59baf",
+          "pubKeyHash": "0xcd6373b261a02e8e7d4612f03c957bae05557b16588270e043b8318d0a1e3f5c",
+          "capacityKwh": 17500,
+          "initialChargePercent": 70
+        }
+      ]
+    }
+  ],
+  "deployedAt": "2026-07-30T17:04:55.595Z"
+}
