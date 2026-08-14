@@ -67,7 +67,7 @@ Cannot deploy to Arbitrum One until ALL of the following are done:
 - [ ] DSO cross-validation feed (per VPP region)
 - [ ] Multi-sig governor (Safe with at least 3-of-5 key holders)
 - [ ] 48h timelock on parameter changes (per spec §10.3)
-- [ ] Liquidity bootstrapping plan reviewed by legal (utility token, not security)
+- [ ] Liquidity bootstrapping plan reviewed by legal (classification is counsel's determination, not ours)
 - [ ] MiCA + US regulatory review complete (per spec §8 risk row "Regulation")
 - [ ] Bug bounty program live (Immunefi or equivalent), at least $50K cap
 - [ ] Public test campaign (incentivized testnet, ≥30 days, no critical findings)

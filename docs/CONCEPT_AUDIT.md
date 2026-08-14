@@ -69,7 +69,7 @@
 
 - **File:** `Settlement.sol:217-227` (`setSettlementFeeBps`, `setMintingFeeBps`) and `Settlement.sol:205-214` (`setFeeRecipients`).
 - **What the code does:** `FEE_MANAGER_ROLE` can move the settlement fee bps anywhere in `[0, MAX_FEE_BPS=1000]` and re-route the four fee recipients (treasury / team / ecosystem / insurance) to any address.
-- **What CORE_THESIS says:** Fees are economic parameters that flow into the equity story (treasury captures 40% of fees → equity appreciates). Mutating them post-launch is a soft form of "human reviews / subjective decisions" and re-pointing the recipient is a literal hostile-takeover vector.
+- **What CORE_THESIS says:** Fees are economic parameters that flow into the equity story (treasury captures 40% of fees → equity value tracks protocol revenue). Mutating them post-launch is a soft form of "human reviews / subjective decisions" and re-pointing the recipient is a literal hostile-takeover vector.
 - **Severity:** TESTNET-OK / mainnet SERIOUS. Distinct from D-3 because fees aren't a crash-stop — but a malicious or compromised admin can quietly drain the treasury stream.
 - **Recommended fix:**
   - Make `MAX_FEE_BPS` and the four `*_SHARE_BPS` constants immutable (already are — good). Make `settlementFeeBps` / `mintingFeeBps` immutable too: bake `25` and `100` in as constants. If fee-tuning is desired, only allow it via the same timelocked governance route, never via a single role-holder.
