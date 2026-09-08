@@ -160,14 +160,14 @@ export function Overview(): JSX.Element {
                 {mintsLoading && mints.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={4} className="text-center text-fg-subtle py-8">
-                      Loading mint events…
+                      Scanning the chain for mint events. Without an indexer this can take a long time or time out — the range from our deploy block is now tens of millions of blocks. Totals above are unaffected: they are read directly from the contract.
                     </TableCell>
                   </TableRow>
                 )}
                 {!mintsLoading && mints.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={4} className="text-center text-fg-subtle py-8">
-                      No mints yet. Awaiting first verified epoch.
+                      Mint history is not indexed yet — the contract emits events but enumerating them needs an indexer (Phase 1). Totals above are read directly from the contract; every individual mint is visible on Arbiscan.
                     </TableCell>
                   </TableRow>
                 )}
@@ -203,7 +203,7 @@ export function Overview(): JSX.Element {
                 {activeVPPs.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={3} className="text-center text-fg-subtle py-8">
-                      Awaiting first VPP onboarding.
+                      Per-VPP roll-up is not indexed yet (Phase 1). Registrations live on-chain in a mapping, which cannot be listed without an indexer — individual records are readable on Arbiscan.
                     </TableCell>
                   </TableRow>
                 )}

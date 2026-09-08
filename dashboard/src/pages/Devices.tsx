@@ -130,7 +130,9 @@ export function Devices(): JSX.Element {
       <Card>
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <CardTitle>{devices.length} registered devices</CardTitle>
+            <CardTitle>
+              {devices.length > 0 ? `${devices.length} registered devices` : "Device registry"}
+            </CardTitle>
           </div>
           <div className="flex items-center gap-2">
             <Input
@@ -158,7 +160,7 @@ export function Devices(): JSX.Element {
               {isLoading && devices.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center text-fg-subtle py-8">
-                    Reading device registry from chain…
+                    Scanning the chain for registration events. Without an indexer this can take a long time or time out. Individual device records remain readable on-chain and on Arbiscan.
                   </TableCell>
                 </TableRow>
               )}
@@ -166,7 +168,7 @@ export function Devices(): JSX.Element {
                 <TableRow>
                   <TableCell colSpan={6} className="text-center text-fg-subtle py-8">
                     {devices.length === 0
-                      ? "No devices registered yet."
+                      ? "The registry is stored on-chain as a mapping, so it cannot be listed without an indexer (Phase 1). Devices and their measurements are readable individually, and every registration is visible on Arbiscan."
                       : "No devices match this filter."}
                   </TableCell>
                 </TableRow>

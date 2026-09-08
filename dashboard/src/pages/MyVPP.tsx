@@ -133,14 +133,14 @@ export function MyVPP(): JSX.Element {
                 {devicesLoading && devices.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={3} className="text-center text-fg-subtle py-8">
-                      Reading device registry…
+                      Scanning the chain for this operator's devices. Without an indexer this can time out; the balance above comes straight from the contract.
                     </TableCell>
                   </TableRow>
                 )}
                 {!devicesLoading && devices.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={3} className="text-center text-fg-subtle py-8">
-                      No devices registered for this address.
+                      Device list needs an indexer (Phase 1). Balances and totals above come straight from the contract.
                     </TableCell>
                   </TableRow>
                 )}
