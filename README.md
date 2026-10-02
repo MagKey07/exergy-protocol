@@ -18,7 +18,7 @@ A working testnet implementation of a sectoral monetary system: tokens are minte
 
 ## What is in this repo
 
-Phase 0 (testnet foundation) artifacts. All implementation is open-source under MIT.
+Phase 0 (testnet foundation) artifacts. Source is public and readable under the Business Source License 1.1 (earlier versions: MIT).
 
 | Component | Files | Lines | Purpose |
 |---|---|---|---|
@@ -169,7 +169,7 @@ To report a vulnerability: email `info@keyenergy.io` with subject "Security:". A
 
 ## License
 
-MIT. See [`LICENSE`](LICENSE).
+Business Source License 1.1 — free for research, audit, testing and testnet use; production or commercial use requires a license from Key Energy, Inc. Converts to GPL-2.0-or-later on 2030-10-02. Versions published before 2026-10-02 remain under MIT. See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
 
 Open-source from day one is a deliberate design constraint, not a marketing posture: the protocol explicitly refuses centralized software gatekeeping (CORE_THESIS §5.5). Multiple independent implementations of the VPP-cloud signer and the dashboard are encouraged — like SMTP, the protocol is the contract, not the client.
 

@@ -2,7 +2,7 @@
   "name": "@exergy/vpp-connector-sdk",
   "version": "0.1.0",
   "description": "Minimal TypeScript SDK for VPP operators integrating against the Exergy Protocol on Arbitrum Sepolia.",
-  "license": "MIT",
+  "license": "BUSL-1.1",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [

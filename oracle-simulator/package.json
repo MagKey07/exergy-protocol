@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Mock oracle pipeline for Exergy Protocol MVP. Simulates Battery BMS -> Edge Device (HSM) -> VPP Cloud -> OracleRouter on Arbitrum Sepolia.",
-  "license": "MIT",
+  "license": "BUSL-1.1",
   "engines": {
     "node": ">=20"
   },

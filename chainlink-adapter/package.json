@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Mock Chainlink External Adapter for Exergy Protocol — verifies dual-signed VPP packets, runs 3-of-5 consensus + DSO cross-check, then relays accepted packets on-chain to OracleRouter. One reference implementation among many; the protocol is open per CORE_THESIS.",
-  "license": "MIT",
+  "license": "BUSL-1.1",
   "engines": {
     "node": ">=20"
   },

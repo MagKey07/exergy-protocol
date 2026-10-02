@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Exergy Protocol \u2014 MVP testnet smart contracts (Phase 0)",
-  "license": "MIT",
+  "license": "BUSL-1.1",
   "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test",

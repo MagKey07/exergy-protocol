@@ -660,7 +660,7 @@ For a complete worked example that covers registration + approval + first mint e
 - **Bugs and questions in the integration:** [github.com/MagKey07/exergy-protocol/issues](https://github.com/MagKey07/exergy-protocol/issues). Tag with `vpp-integration`.
 - **Role grants and pilot coordination:** `info@keyenergy.io`. Include your VPP cloud wallet address, preferred `vppId` string, and a list of device labels you want pre-registered.
 - **Live network state:** [dashboard.keyenergy.io](https://dashboard.keyenergy.io).
-- **Contract source for audit:** [github.com/MagKey07/exergy-protocol/tree/main/MVP/contracts](https://github.com/MagKey07/exergy-protocol/tree/main/MVP/contracts). MIT licensed.
+- **Contract source for audit:** [github.com/MagKey07/exergy-protocol/tree/main/MVP/contracts](https://github.com/MagKey07/exergy-protocol/tree/main/MVP/contracts). Business Source License 1.1 (free for audit and testing).
 - **Smoke simulator (working reference for the full pipeline):** [github.com/MagKey07/exergy-protocol/tree/main/MVP/oracle-simulator](https://github.com/MagKey07/exergy-protocol/tree/main/MVP/oracle-simulator).
 - **Economic Brief** (the broader "why integrate" document): [docs/outreach/Economic_Brief_for_VPP_Operators.md](outreach/Economic_Brief_for_VPP_Operators.md).
 

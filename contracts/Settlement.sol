@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: BUSL-1.1
 // WARNING: MVP testnet implementation. Production deployment requires security audit by OpenZeppelin or Trail of Bits.
 pragma solidity ^0.8.24;
 
