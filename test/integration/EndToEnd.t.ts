@@ -1,23 +1,25 @@
-// End-to-End — full lifecycle from device registration to settled trade.
+// End-to-End — full lifecycle from device registration to settled exchange.
 //
-// Walks the protocol exactly as the investor demo will:
+// Walks the protocol the way the canon describes it:
 //   1. Governor registers VPP A and a device under it.
 //   2. Device + VPP cloud co-sign a measurement packet.
 //   3. OracleRouter verifies and forwards to MintingEngine.
-//   4. MintingEngine mints XRGY to vppA, increments storage, updates floating index.
-//   5. vppA pays alice (employee in this VPP) some XRGY.
-//   6. alice settles XRGY to bob (cross-VPP P2P) — fees flow to fee receivers.
-//   7. bob redeems some XRGY for energy consumption — storage drops, supply unchanged.
+//   4. MintingEngine mints notes to the VPP, sets the pool from the device's
+//      attested charge level, floating index = 1.0.
+//   5. The VPP pays alice some notes.
+//   6. alice pays bob notes for energy — both inside VPP A's perimeter.
+//   7. alice moves a note to a participant of another VPP (no wire needed).
+//   8. The battery reports a lower charge: consumption shows up as a falling
+//      floating index. No note is burned, nothing is "redeemed".
 //
 // This test is the single authoritative answer to "does the system actually work?".
 
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
+import { loadFixture, time } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import {
   BPS_DENOMINATOR,
   FEE_SPLIT,
-  MINT_FEE_BPS,
   ONE_TOKEN,
   SETTLEMENT_FEE_BPS,
   deployFullSystem,
@@ -32,131 +34,100 @@ import {
   signVpp,
 } from "../helpers/signatures";
 
+const KWH = ONE_TOKEN; // kWh are 18-decimal on chain
+
 describe("Integration: end-to-end happy path", () => {
-  it("registers → mints → settles → redeems with all invariants intact", async () => {
+  it("registers → mints → settles inside the perimeter → moves a note → index falls on consumption", async () => {
     const sys = await loadFixture(deployFullSystem);
-    const {
-      token,
-      mintingEngine,
-      oracleRouter,
-      settlement,
-      governance,
-      governor,
-      vppA,
-      alice,
-      bob,
-      treasury,
-      team,
-      ecosystem,
-      insurance,
-    } = sys;
+    const { token, mintingEngine, oracleRouter, settlement, governance, governor, vppB, alice, bob } = sys;
+    const { treasury, team, ecosystem, insurance } = sys;
 
     // ----- Step 1: register VPP + device -----------------------------------
     const device = makeWallet("e2e-device");
     const vppCloud = makeWallet("e2e-vpp-cloud");
     const deviceId = ethers.id("e2e-device");
+    const vppId = ethers.id("vpp-A");
 
-    await governance.connect(governor).registerVPP(vppCloud.address, ethers.id("vpp-meta"));
-    expect(await governance.isVPPApproved(vppCloud.address)).to.equal(true);
-
-    await oracleRouter
-      .connect(governor)
-      .registerDevice(deviceId, vppCloud.address, devicePubKeyHash(device));
+    await governance.connect(governor).registerVPP(vppId, vppCloud.address);
+    expect(await governance.isActiveVPPOperator(vppCloud.address)).to.equal(true);
+    await oracleRouter.connect(governor).registerDevice(deviceId, vppCloud.address, devicePubKeyHash(device));
 
     // ----- Step 2 + 3: dual-signed packet → OracleRouter verifies ----------
-    const packet = makePacket({ deviceId, kwhAmount: 500n, sourceType: 0 });
+    const t0 = await time.latest();
+    const packet = makePacket({
+      deviceId,
+      kwhAmount: 500n * KWH,
+      storageCapacity: 500n * KWH,
+      chargeLevelPercent: 100,
+      cumulativeCycles: 1,
+      timestamp: t0,
+    });
     const devSig = await signDevice(packet, device);
     const vppSig = await signVpp(packet, devSig, vppCloud);
-
-    await expect(oracleRouter.submitMeasurement(packet, devSig, vppSig)).to.emit(
-      mintingEngine,
-      "EnergyMinted"
-    );
+    await expect(oracleRouter.submitMeasurement(packet, devSig, vppSig)).to.emit(mintingEngine, "EnergyMinted");
 
     // ----- Step 4: minting + state checks ---------------------------------
-    const vppCloudAddr = vppCloud.address;
-    expect(await token.balanceOf(vppCloudAddr)).to.equal(500n * ONE_TOKEN);
-    expect(await mintingEngine.totalVerifiedEnergyInStorage()).to.equal(500n);
-    expect(await mintingEngine.totalTokensMinted()).to.equal(500n * ONE_TOKEN);
-    // Floating index: 500 kWh * 1e18 / (500 * 1e18) = 1e18
+    expect(await token.balanceOf(vppCloud.address)).to.equal(500n * ONE_TOKEN);
+    expect(await mintingEngine.totalVerifiedEnergyInStorage()).to.equal(500n * KWH);
     expect(await mintingEngine.getFloatingIndex()).to.equal(ONE_TOKEN);
 
-    // ----- Step 5: vppCloud pays alice 100 XRGY ---------------------------
-    // Direct ERC-20 transfer — VPP operator transfers off-protocol payroll.
-    // Fund vppCloud wallet for gas first.
-    await sys.deployer.sendTransaction({
-      to: vppCloudAddr,
-      value: ethers.parseEther("1"),
+    // ----- Step 5: the VPP pays alice 100 notes ----------------------------
+    await sys.deployer.sendTransaction({ to: vppCloud.address, value: ethers.parseEther("1") });
+    await token.connect(vppCloud.connect(ethers.provider)).transfer(await alice.getAddress(), 100n * ONE_TOKEN);
+
+    // ----- Step 6: energy for a note, inside one perimeter ----------------
+    await settlement.connect(governor).setParticipantVPP(await alice.getAddress(), vppId);
+    await settlement.connect(governor).setParticipantVPP(await bob.getAddress(), vppId);
+    const principal = 50n * ONE_TOKEN;
+    const fee = (principal * SETTLEMENT_FEE_BPS) / BPS_DENOMINATOR;
+    await token.connect(alice).approve(await settlement.getAddress(), principal + fee);
+    await settlement.connect(alice).settleEnergy(await bob.getAddress(), principal, 10n * KWH);
+
+    expect(await token.balanceOf(await bob.getAddress())).to.equal(principal);
+    expect(await token.balanceOf(await treasury.getAddress())).to.equal((fee * FEE_SPLIT.treasury) / BPS_DENOMINATOR);
+    expect(await token.balanceOf(await team.getAddress())).to.equal((fee * FEE_SPLIT.team) / BPS_DENOMINATOR);
+    expect(await token.balanceOf(await ecosystem.getAddress())).to.equal((fee * FEE_SPLIT.ecosystem) / BPS_DENOMINATOR);
+
+    // ----- Step 7: a note travels to another VPP — no wire needed ---------
+    const moved = 10n * ONE_TOKEN;
+    const moveFee = (moved * SETTLEMENT_FEE_BPS) / BPS_DENOMINATOR;
+    await token.connect(alice).approve(await settlement.getAddress(), moved + moveFee);
+    await settlement.connect(alice).crossVPPSettle(await vppB.getAddress(), ethers.id("vpp-B"), moved);
+    expect(await token.balanceOf(await vppB.getAddress())).to.equal(moved);
+
+    // ----- Step 8: the battery reports less — the index falls, nothing burns
+    const supplyBefore = await token.totalSupply();
+    await time.increase(3600);
+    const next = makePacket({
+      deviceId,
+      kwhAmount: 1n * KWH,
+      storageCapacity: 500n * KWH,
+      chargeLevelPercent: 50,
+      cumulativeCycles: 2,
+      timestamp: await time.latest(),
     });
-    const vppCloudConnected = vppCloud.connect(ethers.provider);
-    await token
-      .connect(vppCloudConnected)
-      .transfer(await alice.getAddress(), 100n * ONE_TOKEN);
+    const devSig2 = await signDevice(next, device);
+    const vppSig2 = await signVpp(next, devSig2, vppCloud);
+    await oracleRouter.submitMeasurement(next, devSig2, vppSig2);
 
-    expect(await token.balanceOf(await alice.getAddress())).to.equal(100n * ONE_TOKEN);
+    expect(await mintingEngine.totalVerifiedEnergyInStorage()).to.equal(250n * KWH);
+    expect(await token.totalSupply()).to.equal(supplyBefore + 1n * ONE_TOKEN); // only the new mint
+    expect(await mintingEngine.getFloatingIndex()).to.be.lt(ONE_TOKEN);
 
-    // ----- Step 6: alice settles 100 XRGY to bob (cross-VPP P2P) ---------
-    const settleGross = 100n * ONE_TOKEN;
-    await token.connect(alice).approve(await settlement.getAddress(), settleGross);
-    await settlement
-      .connect(alice)
-      .settleEnergy(await alice.getAddress(), await bob.getAddress(), settleGross);
-
-    const settleFee = (settleGross * SETTLEMENT_FEE_BPS) / BPS_DENOMINATOR;
-    const settleNet = settleGross - settleFee;
-
-    expect(await token.balanceOf(await bob.getAddress())).to.equal(settleNet);
-    expect(await token.balanceOf(await alice.getAddress())).to.equal(0n);
-
-    // Fee distribution: 40/20/25/15
-    expect(await token.balanceOf(await treasury.getAddress())).to.equal(
-      (settleFee * FEE_SPLIT.treasury) / BPS_DENOMINATOR
-    );
-    expect(await token.balanceOf(await team.getAddress())).to.equal(
-      (settleFee * FEE_SPLIT.team) / BPS_DENOMINATOR
-    );
-    expect(await token.balanceOf(await ecosystem.getAddress())).to.equal(
-      (settleFee * FEE_SPLIT.ecosystem) / BPS_DENOMINATOR
-    );
-    expect(await token.balanceOf(await insurance.getAddress())).to.equal(
-      (settleFee * FEE_SPLIT.insurance) / BPS_DENOMINATOR
-    );
-
-    // ----- Step 7: bob redeems against energy consumption ----------------
-    const supplyBeforeRedeem = await mintingEngine.totalTokensMinted();
-    const energyBeforeRedeem = await mintingEngine.totalVerifiedEnergyInStorage();
-
-    const redeemGross = 50n * ONE_TOKEN;
-    const redeemKwh = 50n;
-    await token.connect(bob).approve(await settlement.getAddress(), redeemGross);
-    await settlement
-      .connect(bob)
-      .recordRedemption(await bob.getAddress(), redeemGross, redeemKwh);
-
-    // NO BURN: totalTokensMinted is monotonic
-    expect(await mintingEngine.totalTokensMinted()).to.equal(supplyBeforeRedeem);
-    // Storage shrank
-    expect(await mintingEngine.totalVerifiedEnergyInStorage()).to.equal(
-      energyBeforeRedeem - redeemKwh
-    );
-    // Floating index dropped
-    const newIndex = await mintingEngine.getFloatingIndex();
-    expect(newIndex).to.be.lt(ONE_TOKEN);
-
-    // ----- Final invariants ----------------------------------------------
-    // Sum of all balances = totalSupply (no leak / no burn)
-    const allHolders = [
-      vppCloudAddr,
+    // ----- Final invariant: balances add up to supply (no leak, no burn) --
+    const holders = [
+      vppCloud.address,
       await alice.getAddress(),
       await bob.getAddress(),
+      await vppB.getAddress(),
       await treasury.getAddress(),
       await team.getAddress(),
       await ecosystem.getAddress(),
       await insurance.getAddress(),
-      await settlement.getAddress(), // any tokens held by Settlement (should be 0 ideally)
+      await settlement.getAddress(),
     ];
     let sum = 0n;
-    for (const h of allHolders) sum += await token.balanceOf(h);
+    for (const h of holders) sum += await token.balanceOf(h);
     expect(sum).to.equal(await token.totalSupply());
   });
 
@@ -196,7 +167,9 @@ describe("Integration: end-to-end happy path", () => {
       lastTimestamp += 60;
       const p = makePacket({
         deviceId,
-        kwhAmount: 100n,
+        kwhAmount: 100n * KWH,
+        storageCapacity: 100n * KWH,
+        chargeLevelPercent: 100,
         timestamp: lastTimestamp,
         cumulativeCycles: i + 1,
       });

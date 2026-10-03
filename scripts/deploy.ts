@@ -81,7 +81,7 @@ async function main() {
   const MintingFactory = await ethers.getContractFactory("MintingEngine");
   const mintingEngine = await upgrades.deployProxy(
     MintingFactory,
-    [tokenAddr, governor, ethers.parseEther("1000000")],
+    [tokenAddr, governor, 1_000_000 /* whole notes — the initializer scales by 1e18 */],
     { kind: "uups" }
   );
   await mintingEngine.waitForDeployment();

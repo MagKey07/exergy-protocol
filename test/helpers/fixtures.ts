@@ -105,7 +105,7 @@ export async function deployFullSystem(): Promise<DeployedSystem> {
     [
       await token.getAddress(),
       await governor.getAddress(),
-      ethers.parseEther("1000000"),
+      1_000_000 /* whole notes — the initializer scales by 1e18 */,
     ],
     { kind: "uups" }
   );

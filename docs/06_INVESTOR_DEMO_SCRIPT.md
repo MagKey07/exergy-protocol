@@ -101,13 +101,13 @@ Open the resulting tx on Arbiscan. Highlight:
 ### Minute 4:15 — Show the floating index dynamic (45 sec)
 
 ```bash
-# Trigger a redemption that consumes 50 kWh of stored energy.
-npx hardhat run --network arbitrumSepolia scripts/demo-redeem.ts
+# The battery reports a lower charge level after the household used energy.
+npx hardhat run --network arbitrumSepolia scripts/demo-consume.ts
 ```
 
-Watch the dashboard's "Floating index" tick down a small amount and "Total verified energy in storage" drop by 50 kWh. Note that "Total $XRGY minted" does NOT decrease.
+Watch the dashboard's "Floating index" tick down and "Verified energy in storage" drop. Note that "Notes in circulation" does NOT decrease.
 
-> "Energy was consumed. The token did not burn. It moved to the energy provider. The floating index dropped because the same number of tokens now back less stored energy. When the sun rises tomorrow and the battery recharges, the index will recover. Self-regulating. No artificial supply destruction. This is why we say tokens are money, not coupons."
+> "Energy was consumed. No note was burned and nothing was redeemed — a note is a measure, not a voucher. The floating index dropped because the same number of notes now stand behind less stored energy. When the battery recharges, the next signed reading raises it again. This is why we say notes are money, not coupons."
 
 ### Minute 5 — Close (30 sec)
 

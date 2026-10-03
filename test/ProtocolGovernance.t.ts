@@ -1,24 +1,12 @@
-// ProtocolGovernance — VPP register/deactivate, parameter changes, pause, two-step ownership.
+// ProtocolGovernance — VPP registry, pause, two-step ownership.
 //
-// SPEC: Technical_Blueprint.md §2.5 + §10.3 (48h timelock for parameter changes).
-// Interface for ProtocolGovernance is not yet committed by the contracts agent —
-// this test file is written against the spec verbatim. Expected ABI:
+// Written against the deployed MVP interface (contracts/interfaces/IProtocolGovernance.sol):
+//   registerVPP(bytes32 vppId, address operatorAddress) · setVPPActive(bytes32, bool)
+//   getVPP(bytes32) · isActiveVPPOperator(address) · pauseProtocol / unpauseProtocol
 //
-//   function registerVPP(address vpp, bytes32 metadataHash) external;
-//   function deactivateVPP(address vpp) external;
-//   function isVPPApproved(address vpp) external view returns (bool);
-//
-//   function pause() external;
-//   function unpause() external;
-//   function paused() external view returns (bool);
-//
-//   function proposeParameterChange(bytes32 paramKey, uint256 newValue) external returns (uint256 id);
-//   function executeParameterChange(uint256 id) external;
-//   function TIMELOCK_DURATION() external view returns (uint256); // 48h in production
-//
-//   function transferOwnership(address newOwner) external; // step 1
-//   function acceptOwnership() external;                  // step 2
-//   function pendingOwner() external view returns (address);
+// The 48h parameter timelock (Technical_Blueprint §10.3) is NOT in the MVP — the
+// interface states "Production: 48-hour timelock. MVP: single owner address". Those
+// tests are kept as pending so the gap stays visible instead of silently failing.
 
 import { expect } from "chai";
 import { ethers } from "hardhat";
@@ -27,36 +15,37 @@ import { deployFullSystem } from "./helpers/fixtures";
 
 describe("ProtocolGovernance", () => {
   describe("VPP registry", () => {
-    it("registers a VPP and marks it approved", async () => {
+    it("registers a VPP and marks its operator active", async () => {
       const { governance, governor, vppA } = await loadFixture(deployFullSystem);
-      const metadataHash = ethers.id("vpp-A-metadata");
+      const vppId = ethers.id("vpp-A");
 
-      await expect(
-        governance.connect(governor).registerVPP(await vppA.getAddress(), metadataHash)
-      )
+      await expect(governance.connect(governor).registerVPP(vppId, await vppA.getAddress()))
         .to.emit(governance, "VPPRegistered")
-        .withArgs(await vppA.getAddress(), metadataHash);
+        .withArgs(vppId, await vppA.getAddress());
 
-      expect(await governance.isVPPApproved(await vppA.getAddress())).to.equal(true);
+      const rec = await governance.getVPP(vppId);
+      expect(rec.operatorAddress).to.equal(await vppA.getAddress());
+      expect(rec.active).to.equal(true);
+      expect(await governance.isActiveVPPOperator(await vppA.getAddress())).to.equal(true);
     });
 
-    it("deactivateVPP flips the approval flag", async () => {
+    it("setVPPActive(false) deactivates the operator", async () => {
       const { governance, governor, vppA } = await loadFixture(deployFullSystem);
-      await governance
-        .connect(governor)
-        .registerVPP(await vppA.getAddress(), ethers.id("m"));
+      const vppId = ethers.id("vpp-A");
+      await governance.connect(governor).registerVPP(vppId, await vppA.getAddress());
 
-      await expect(governance.connect(governor).deactivateVPP(await vppA.getAddress()))
-        .to.emit(governance, "VPPDeactivated")
-        .withArgs(await vppA.getAddress());
+      await expect(governance.connect(governor).setVPPActive(vppId, false))
+        .to.emit(governance, "VPPActiveStatusChanged")
+        .withArgs(vppId, false);
 
-      expect(await governance.isVPPApproved(await vppA.getAddress())).to.equal(false);
+      expect((await governance.getVPP(vppId)).active).to.equal(false);
+      expect(await governance.isActiveVPPOperator(await vppA.getAddress())).to.equal(false);
     });
 
-    it("only owner/governor can register VPPs", async () => {
+    it("only the governor can register VPPs", async () => {
       const { governance, attacker, vppA } = await loadFixture(deployFullSystem);
       await expect(
-        governance.connect(attacker).registerVPP(await vppA.getAddress(), ethers.id("x"))
+        governance.connect(attacker).registerVPP(ethers.id("x"), await vppA.getAddress()),
       ).to.be.reverted;
     });
   });
@@ -74,11 +63,12 @@ describe("ProtocolGovernance", () => {
 
     it("non-owner cannot pause", async () => {
       const { governance, attacker } = await loadFixture(deployFullSystem);
-      await expect(governance.connect(attacker).pause()).to.be.reverted;
+      await expect(governance.connect(attacker).pauseProtocol()).to.be.reverted;
     });
   });
 
-  describe("Parameter change with 48h timelock", () => {
+  // Phase 1: timelock not implemented in the MVP — see header.
+  describe.skip("Parameter change with 48h timelock", () => {
     it("queues a proposal that cannot execute before TIMELOCK_DURATION", async () => {
       const { governance, governor } = await loadFixture(deployFullSystem);
       const paramKey = ethers.id("MINT_FEE_BPS");

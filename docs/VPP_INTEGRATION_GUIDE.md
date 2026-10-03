@@ -55,7 +55,7 @@ Five contracts, all deployed on Arbitrum Sepolia at the addresses below. Four of
 
 | Contract | Address | Purpose |
 |---|---|---|
-| **XRGYToken** | `0x8557e39A372FAC1811b2171207B669975B648fDB` | ERC-20 + EIP-2612 permit. Receipt for verified kWh in storage. |
+| **XRGYToken** | `0x8557e39A372FAC1811b2171207B669975B648fDB` | ERC-20 + EIP-2612 permit. The note: denominated in kWh, backed by measured stored energy network-wide. |
 | **OracleRouter** | `0x43F2c96AE8f866C181b4ce97966Bd4e4a36AE2e5` | Receives measurement packets, verifies dual signatures, forwards to engine. |
 | **MintingEngine** | `0x223cEf9882f5F7528CCC4521773683B83723B5A4` | Validates Proof-of-Wear, mints tokens, advances eras at halving thresholds. |
 | **Settlement** | `0xBaFe8D465F9D7fCab723e41c0bA13D328b2E4C9C` | Pulls 1% fee on each mint, handles peer-to-peer settlement. |
@@ -71,7 +71,7 @@ You will interact with three contracts during integration:
 - **XRGYToken** — `approve(Settlement, MAX)` once + `balanceOf(yourWallet)` for monitoring.
 - **MintingEngine** — read-only views: `currentEra()`, `currentMintRateWeiPerKwh()`, `getFloatingIndex()`, `getDeviceCycleState(deviceId)`.
 
-**Settlement** is called automatically by the engine on every mint — you do not call it directly during minting. You may call its `settleEnergy` later if your operators want to redeem tokens against grid bills (see §10).
+**Settlement** is called automatically by the engine on every mint — you do not call it directly during minting. `settleEnergy` is the energy-for-a-note exchange between two participants of the same VPP — both must be registered in that VPP's perimeter (`setParticipantVPP`), because the energy travels over a wire. Moving a note anywhere else uses `crossVPPSettle` (see §10).
 
 ---
 
@@ -662,7 +662,7 @@ For a complete worked example that covers registration + approval + first mint e
 - **Live network state:** [dashboard.keyenergy.io](https://dashboard.keyenergy.io).
 - **Contract source for audit:** [github.com/MagKey07/exergy-protocol/tree/main/MVP/contracts](https://github.com/MagKey07/exergy-protocol/tree/main/MVP/contracts). Business Source License 1.1 (free for audit and testing).
 - **Smoke simulator (working reference for the full pipeline):** [github.com/MagKey07/exergy-protocol/tree/main/MVP/oracle-simulator](https://github.com/MagKey07/exergy-protocol/tree/main/MVP/oracle-simulator).
-- **Economic Brief** (the broader "why integrate" document): [docs/outreach/Economic_Brief_for_VPP_Operators.md](outreach/Economic_Brief_for_VPP_Operators.md).
+- **Why integrate:** see [keyenergy.io](https://keyenergy.io).
 
 ---
 

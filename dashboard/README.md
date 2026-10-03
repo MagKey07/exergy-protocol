@@ -2,7 +2,7 @@
 
 Operator + observer interface for the Exergy Protocol. Phase 0 (Arbitrum Sepolia testnet).
 
-This is **not** "another DePIN dashboard". $XRGY is a receipt for physically stored kWh — a sectoral monetary unit. The dashboard surfaces the live state of that monetary precedent: total supply, floating index, current era, halving progress, settlement flows.
+This is **not** "another DePIN dashboard". A note ($XRGY) is a unit denominated in kWh, backed by energy measured in storage across the network — a sectoral monetary unit, never redeemed and never burned. The dashboard surfaces the live state of that monetary precedent: total supply, floating index, current era, halving progress, settlement flows.
 
 ---
 

@@ -77,7 +77,8 @@ async function mintAsWithCycles(
   const oracleSigner = await ethers.getSigner(oracleRouterAddr);
   const tx = await mintingEngine
     .connect(oracleSigner)
-    .commitVerifiedEnergy(deviceId, vppAddress, kwh, cumulativeCycles, storageCapacity, chargeLevelPercent);
+    // kWh and capacity are 18-decimal on chain; tests speak in whole kWh.
+    .commitVerifiedEnergy(deviceId, vppAddress, kwh * ONE_TOKEN, cumulativeCycles, storageCapacity * ONE_TOKEN, chargeLevelPercent);
   await ethers.provider.send("hardhat_stopImpersonatingAccount", [oracleRouterAddr]);
   return tx;
 }
@@ -147,10 +148,13 @@ describe("MintingEngine", () => {
 
       // After threshold cross: era >= 1.
       expect(await mintingEngine.currentEra()).to.be.gte(1n);
-      // Strict halving: minted strictly less than era-0 rate would have given.
-      expect(minted).to.be.lt(100n * ONE_TOKEN);
-      // ...and at least era-1 rate floor.
-      expect(minted).to.be.gte(50n * ONE_TOKEN);
+      // Documented contract behaviour (MintingEngine.sol header): the packet that
+      // crosses the threshold is credited at the pre-halving rate; the halving
+      // applies from the next packet on.
+      expect(minted).to.equal(100n * ONE_TOKEN);
+      const balanceBeforeNext = await token.balanceOf(await vppA.getAddress());
+      await mintAs(mintingEngine, await oracleRouter.getAddress(), deviceId, await vppA.getAddress(), 100n);
+      expect((await token.balanceOf(await vppA.getAddress())) - balanceBeforeNext).to.equal(50n * ONE_TOKEN);
     });
 
     it("emits HalvingTriggered when crossing 1M boundary", async () => {
@@ -236,7 +240,7 @@ describe("MintingEngine", () => {
       );
 
       // floatingIndex = storedEnergy * 1e18 / totalSupply(wei) = 100 * 1e18 / (100 * 1e18)
-      expect(await mintingEngine.totalVerifiedEnergyInStorage()).to.equal(CAPACITY);
+      expect(await mintingEngine.totalVerifiedEnergyInStorage()).to.equal(CAPACITY * ONE_TOKEN);
       expect(await mintingEngine.getFloatingIndex()).to.equal(ONE_TOKEN);
     });
 
@@ -254,8 +258,8 @@ describe("MintingEngine", () => {
       const supplyBefore = await mintingEngine.totalTokensMinted();
       const indexBefore = await mintingEngine.getFloatingIndex();
 
-      // Settlement reports 30 kWh consumed — in production this fires when
-      // a redemption happens. Tokens DO NOT burn; only energy bookkeeping moves.
+      // Settlement reports 30 kWh consumed (energy delivered for a note inside a
+      // VPP). Notes DO NOT burn; only energy bookkeeping moves.
       await ethers.provider.send("hardhat_impersonateAccount", [
         await settlement.getAddress(),
       ]);
@@ -335,7 +339,7 @@ describe("MintingEngine", () => {
       );
       const epoch = await mintingEngine.currentEpoch();
       const data = await mintingEngine.getEpochData(epoch);
-      expect(data.totalVerifiedKwh).to.equal(75n);
+      expect(data.totalVerifiedKwh).to.equal(75n * ONE_TOKEN);
       expect(data.totalTokensMinted).to.equal(75n * ONE_TOKEN);
     });
 
@@ -421,7 +425,7 @@ describe("MintingEngine", () => {
       expect(await token.balanceOf(vppAddr)).to.equal(130n * ONE_TOKEN);
       const state = await mintingEngine.getDeviceCycleState(deviceId);
       expect(state.lastCumulativeCycles).to.equal(3);
-      expect(state.storageCapacity).to.equal(CAPACITY);
+      expect(state.storageCapacity).to.equal(CAPACITY * ONE_TOKEN);
       expect(state.initialized).to.equal(true);
     });
 
@@ -466,7 +470,7 @@ describe("MintingEngine", () => {
         mintAsWithCycles(mintingEngine, oracleAddr, deviceId, vppAddr, 250n, 2, CAPACITY)
       )
         .to.be.revertedWithCustomError(mintingEngine, "EnergyExceedsCapacity")
-        .withArgs(250n, 100n);
+        .withArgs(250n * ONE_TOKEN, 100n * ONE_TOKEN);
     });
 
     it("boundary: exactly MAX_CYCLES_PER_EPOCH passes, one over rejects", async () => {

@@ -74,6 +74,17 @@ async function main() {
     .approve(SETTLEMENT, approveAmount);
   await tx1.wait();
 
+  // Since the perimeter fix (e0872c3) energy for a note settles only inside one
+  // VPP: place payer and provider in the demo VPP once.
+  {
+    const demoVpp = ethers.id("demo-vpp");
+    for (const who of [await vppSigner.getAddress(), deployer.address]) {
+      if ((await settlement.participantVPP(who)) !== demoVpp) {
+        await (await settlement.connect(deployer).setParticipantVPP(who, demoVpp)).wait();
+      }
+    }
+  }
+
   console.log(`Step 2: VPP settleEnergy(provider=${deployer.address}, ${kwhToConsume} XRGY, ${kwhToConsume} kWh)...`);
   const tx2 = await settlement
     .connect(vppSigner)

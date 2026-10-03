@@ -74,6 +74,17 @@ async function main() {
   // 5 consume events of varying sizes — index will progressively drop.
   const consumeAmounts = [3, 5, 2, 4, 1];
 
+  // Since the perimeter fix (e0872c3) energy for a note settles only inside one
+  // VPP: place payer and provider in the demo VPP once.
+  {
+    const demoVpp = ethers.id("demo-vpp");
+    for (const who of [await vppSigner.getAddress(), deployer.address]) {
+      if ((await settlement.participantVPP(who)) !== demoVpp) {
+        await (await settlement.connect(deployer).setParticipantVPP(who, demoVpp)).wait();
+      }
+    }
+  }
+
   for (let i = 0; i < consumeAmounts.length; i++) {
     const kwh = consumeAmounts[i];
     const kwhWei = ethers.parseEther(kwh.toString());
