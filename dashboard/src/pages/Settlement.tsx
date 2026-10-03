@@ -14,7 +14,8 @@ import { ConnectButton } from "@rainbow-me/rainbowkit";
 
 import { settlementAbi, xrgyTokenAbi } from "@/lib/contracts";
 import { contractAddresses } from "@/wagmi";
-import { formatBps, formatToken, shortAddress } from "@/lib/utils";
+import { formatBps, formatKwh, formatToken, shortAddress } from "@/lib/utils";
+import { useFloatingIndex } from "@/hooks/useFloatingIndex";
 
 /**
  * P2P + cross-VPP settlement form.
@@ -167,6 +168,14 @@ function SettlementForm({ kind, feeBps, balance }: SettlementFormProps): JSX.Ele
 
   const insufficient = balance !== undefined && totalDebit !== undefined && balance < totalDebit;
 
+  // Energy for a note settles at the floating index: kWh = notes × index.
+  // The contract checks this rate, so the form derives kWh from it.
+  const { data: floatingIndex } = useFloatingIndex();
+  const kwhAtIndex = useMemo(() => {
+    if (kind !== "p2p" || amountWei === undefined || !floatingIndex) return undefined;
+    return (amountWei * floatingIndex) / 10n ** 18n;
+  }, [kind, amountWei, floatingIndex]);
+
   // Energy for a note travels over a wire, so a P2P settle is only accepted when
   // payer and recipient sit in the same VPP perimeter. Check before submitting.
   const { address: payer } = useAccount();
@@ -211,7 +220,8 @@ function SettlementForm({ kind, feeBps, balance }: SettlementFormProps): JSX.Ele
   const { isLoading: confirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
 
   const canSubmit =
-    validRecipient && validVpp && amountWei !== undefined && !insufficient && !outsidePerimeter && !isPending;
+    validRecipient && validVpp && amountWei !== undefined && !insufficient && !outsidePerimeter &&
+    (kind !== "p2p" || (kwhAtIndex !== undefined && kwhAtIndex > 0n)) && !isPending;
 
   const onSubmit = (): void => {
     if (!canSubmit || !amountWei) return;
@@ -223,7 +233,7 @@ function SettlementForm({ kind, feeBps, balance }: SettlementFormProps): JSX.Ele
         address: contractAddresses.settlement,
         abi: settlementAbi,
         functionName: "settleEnergy",
-        args: [to as Address, amountWei, 0n],
+        args: [to as Address, amountWei, kwhAtIndex ?? 0n],
       });
     } else {
       // crossVPPSettle(receiver, counterpartyVPPId, tokenAmount). Three args —
@@ -316,6 +326,12 @@ function SettlementForm({ kind, feeBps, balance }: SettlementFormProps): JSX.Ele
           label="Memo hash (off-chain)"
           value={<span className="font-mono text-xs">{shortAddress(memoHash, 10, 8)}</span>}
         />
+        {kind === "p2p" && (
+          <PreviewRow
+            label="Energy for these notes (at floating index)"
+            value={kwhAtIndex !== undefined ? `${formatKwh(kwhAtIndex)} kWh` : "—"}
+          />
+        )}
         {kind === "cross" && (
           <PreviewRow
             label="Counterparty VPP id"
@@ -341,7 +357,9 @@ function SettlementForm({ kind, feeBps, balance }: SettlementFormProps): JSX.Ele
           <div className="text-xs text-danger break-words">
             {(error as Error).message.includes("OutsidePerimeter")
               ? "Rejected: payer and recipient are not in the same VPP. Use Cross-VPP to move a note to another VPP."
-              : (error as Error).message}
+              : (error as Error).message.includes("OffIndexRate")
+                ? "Rejected: the floating index moved since the quote. Reload and try again."
+                : (error as Error).message}
           </div>
         )}
         {isSuccess && (

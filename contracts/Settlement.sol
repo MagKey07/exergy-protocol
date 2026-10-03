@@ -57,6 +57,10 @@ contract Settlement is
     uint256 public constant MAX_FEE_BPS = 1_000; // 10%
     uint256 public constant BPS_DENOMINATOR = 10_000;
 
+    /// @notice Energy for a note settles at the floating index: notes = kWh ÷ index.
+    ///         Tolerance covers the index moving between quote and inclusion.
+    uint256 public constant INDEX_RATE_TOLERANCE_BPS = 100; // 1%
+
     // Distribution shares (bps over 10_000 of the *fee*, not of the principal):
     uint256 public constant TREASURY_SHARE_BPS = 4_000;
     uint256 public constant TEAM_SHARE_BPS = 2_000;
@@ -147,6 +151,18 @@ contract Settlement is
             revert OutsidePerimeter(msg.sender, provider);
         }
 
+        // A neighbour gives the kWh written on the note: the exchange rate is the
+        // note's own energy content at the moment of the deal, set by the protocol,
+        // not negotiated. notes = kWh / floatingIndex (both 18-decimal).
+        if (kwhConsumed == 0) revert KwhRequired();
+        uint256 index = mintingEngine.getFloatingIndex();
+        if (index == 0) revert NoEnergyBehindNotes();
+        uint256 atIndex = (kwhConsumed * 1e18) / index;
+        uint256 band = (atIndex * INDEX_RATE_TOLERANCE_BPS) / BPS_DENOMINATOR;
+        if (tokenAmount + band < atIndex || tokenAmount > atIndex + band) {
+            revert OffIndexRate(tokenAmount, atIndex);
+        }
+
         uint256 fee = (tokenAmount * settlementFeeBps) / BPS_DENOMINATOR;
 
         // Pull principal → provider. (NO burn; this is a transfer.)
@@ -158,10 +174,8 @@ contract Settlement is
             _distributeFees(fee);
         }
 
-        // Tell engine the storage just shrank.
-        if (kwhConsumed > 0) {
-            mintingEngine.recordEnergyConsumption(kwhConsumed);
-        }
+        // Report the consumption (the pool itself follows the next charge-level report).
+        mintingEngine.recordEnergyConsumption(kwhConsumed);
 
         emit EnergySettled(msg.sender, provider, tokenAmount, kwhConsumed, fee);
     }

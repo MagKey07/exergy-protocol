@@ -88,7 +88,8 @@ async function main() {
   for (let i = 0; i < consumeAmounts.length; i++) {
     const kwh = consumeAmounts[i];
     const kwhWei = ethers.parseEther(kwh.toString());
-    const tokenAmount = kwhWei;
+    // Energy for a note settles at the floating index: notes = kWh ÷ index.
+    const tokenAmount = (kwhWei * 10n ** 18n) / (await engine.getFloatingIndex());
     const approveAmount = (tokenAmount * 10025n) / 10000n;
 
     console.log();

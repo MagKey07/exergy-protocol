@@ -81,7 +81,7 @@ describe("Integration: end-to-end happy path", () => {
     const principal = 50n * ONE_TOKEN;
     const fee = (principal * SETTLEMENT_FEE_BPS) / BPS_DENOMINATOR;
     await token.connect(alice).approve(await settlement.getAddress(), principal + fee);
-    await settlement.connect(alice).settleEnergy(await bob.getAddress(), principal, 10n * KWH);
+    await settlement.connect(alice).settleEnergy(await bob.getAddress(), principal, 50n * KWH); // index 1.0 → 50 kWh for 50 notes
 
     expect(await token.balanceOf(await bob.getAddress())).to.equal(principal);
     expect(await token.balanceOf(await treasury.getAddress())).to.equal((fee * FEE_SPLIT.treasury) / BPS_DENOMINATOR);

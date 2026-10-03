@@ -52,7 +52,8 @@ async function main() {
   const arg = process.argv[process.argv.length - 1];
   const kwhToConsume = arg && !isNaN(Number(arg)) ? Number(arg) : 10;
   const kwhWei = ethers.parseEther(kwhToConsume.toString());
-  const tokenAmount = kwhWei; // era 0: 1 token / 1 kWh
+  // Energy for a note settles at the floating index: notes = kWh ÷ index.
+  const tokenAmount = (kwhWei * 10n ** 18n) / (await engine.getFloatingIndex());
 
   // Impersonate VPP cloud (no gas needed, hardhat-only)
   await network.provider.request({

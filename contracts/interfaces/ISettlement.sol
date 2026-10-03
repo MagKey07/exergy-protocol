@@ -69,6 +69,12 @@ interface ISettlement {
     error OutsidePerimeter(address payer, address provider);
     /// @notice Caller may not manage VPP perimeters.
     error NotPerimeterManager();
+    /// @notice Energy for a note must name the kWh delivered.
+    error KwhRequired();
+    /// @notice Nothing is stored in the network, so a note has no kWh content to settle at.
+    error NoEnergyBehindNotes();
+    /// @notice Notes paid differ from kWh delivered ÷ floating index by more than the tolerance.
+    error OffIndexRate(uint256 tokensPaid, uint256 tokensAtIndex);
 
     /**
      * @notice Settle energy consumption with a same-VPP provider.

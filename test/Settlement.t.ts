@@ -55,7 +55,7 @@ async function seedTokens(
       to,
       kwh * ONE_TOKEN, // kWh are 18-decimal on chain; tests speak in whole kWh
       1, // cumulativeCycles
-      10n ** 12n * ONE_TOKEN, // storageCapacity = 1 TWh (18-decimal)
+      kwh * ONE_TOKEN, // storageCapacity = what was charged → index stays 1.0 note per kWh
       100, // chargeLevelPercent — seed device reports itself full
     );
   await ethers.provider.send("hardhat_stopImpersonatingAccount", [oracleAddr]);
@@ -108,7 +108,7 @@ describe("Settlement", () => {
       await token.connect(alice).approve(await settlement.getAddress(), principal + fee);
 
       // kwhConsumed = 0 to keep this test scoped to fee mechanics.
-      await settlement.connect(alice).settleEnergy(bobAddr, principal, 0n);
+      await settlement.connect(alice).settleEnergy(bobAddr, principal, principal);
 
       // Provider Bob receives the FULL principal, not net-of-fee.
       expect(await token.balanceOf(bobAddr)).to.equal(principal);
@@ -135,9 +135,9 @@ describe("Settlement", () => {
       const fee = (principal * SETTLEMENT_FEE_BPS) / BPS_DENOMINATOR;
       await token.connect(alice).approve(await settlement.getAddress(), principal + fee);
 
-      await expect(settlement.connect(alice).settleEnergy(await bob.getAddress(), principal, 42n))
+      await expect(settlement.connect(alice).settleEnergy(await bob.getAddress(), principal, principal))
         .to.emit(settlement, "EnergySettled")
-        .withArgs(await alice.getAddress(), await bob.getAddress(), principal, 42n, fee);
+        .withArgs(await alice.getAddress(), await bob.getAddress(), principal, principal, fee);
     });
 
     it("reports consumption without touching the pool or burning when kwhConsumed > 0", async () => {
@@ -153,7 +153,7 @@ describe("Settlement", () => {
       const principal = 100n * ONE_TOKEN;
       const fee = (principal * SETTLEMENT_FEE_BPS) / BPS_DENOMINATOR;
       await token.connect(alice).approve(await settlement.getAddress(), principal + fee);
-      await expect(settlement.connect(alice).settleEnergy(await bob.getAddress(), principal, 50n))
+      await expect(settlement.connect(alice).settleEnergy(await bob.getAddress(), principal, principal))
         .to.emit(mintingEngine, "EnergyConsumptionReported");
 
       // Since 03ddb83 the pool follows device charge-level reports only; the
@@ -165,18 +165,15 @@ describe("Settlement", () => {
       expect(await mintingEngine.totalTokensMinted()).to.equal(tokensMintedBefore);
     });
 
-    it("does NOT touch totalVerifiedEnergyInStorage when kwhConsumed == 0", async () => {
+    it("rejects energy for a note with no kWh named (KwhRequired)", async () => {
       const sys = await loadFixture(deployWithPerimeter);
-      const { token, settlement, mintingEngine, alice, bob } = sys;
+      const { token, settlement, alice, bob } = sys;
       await seedTokens(sys, await alice.getAddress(), 200n);
-      const energyBefore = await mintingEngine.totalVerifiedEnergyInStorage();
-
       const principal = 100n * ONE_TOKEN;
       const fee = (principal * SETTLEMENT_FEE_BPS) / BPS_DENOMINATOR;
       await token.connect(alice).approve(await settlement.getAddress(), principal + fee);
-      await settlement.connect(alice).settleEnergy(await bob.getAddress(), principal, 0n);
-
-      expect(await mintingEngine.totalVerifiedEnergyInStorage()).to.equal(energyBefore);
+      await expect(settlement.connect(alice).settleEnergy(await bob.getAddress(), principal, 0n))
+        .to.be.revertedWithCustomError(settlement, "KwhRequired");
     });
 
     it("reverts on zero provider", async () => {
@@ -203,7 +200,7 @@ describe("Settlement", () => {
       const principal = 50n * ONE_TOKEN;
       await token.connect(alice).approve(await settlement.getAddress(), principal);
       await expect(
-        settlement.connect(alice).settleEnergy(await bob.getAddress(), principal, 0n),
+        settlement.connect(alice).settleEnergy(await bob.getAddress(), principal, principal),
       ).to.be.reverted;
     });
 
@@ -211,7 +208,7 @@ describe("Settlement", () => {
       const { settlement, alice, bob } = await loadFixture(deployWithPerimeter);
       // alice has 0 XRGY.
       await expect(
-        settlement.connect(alice).settleEnergy(await bob.getAddress(), ONE_TOKEN, 0n),
+        settlement.connect(alice).settleEnergy(await bob.getAddress(), ONE_TOKEN, ONE_TOKEN),
       ).to.be.reverted;
     });
   });
@@ -315,7 +312,7 @@ describe("Settlement", () => {
       const fee = (principal * SETTLEMENT_FEE_BPS) / BPS_DENOMINATOR;
 
       await token.connect(alice).approve(await settlement.getAddress(), principal + fee);
-      await settlement.connect(alice).settleEnergy(await bob.getAddress(), principal, 0n);
+      await settlement.connect(alice).settleEnergy(await bob.getAddress(), principal, principal);
 
       const treasuryBal = await token.balanceOf(await treasury.getAddress());
       const teamBal = await token.balanceOf(await team.getAddress());
@@ -342,7 +339,7 @@ describe("Settlement", () => {
       const split = splitFee(fee);
 
       await token.connect(alice).approve(await settlement.getAddress(), principal + fee);
-      await expect(settlement.connect(alice).settleEnergy(await bob.getAddress(), principal, 0n))
+      await expect(settlement.connect(alice).settleEnergy(await bob.getAddress(), principal, principal))
         .to.emit(settlement, "FeesDistributed")
         .withArgs(split.treasury, split.team, split.ecosystem, split.insurance);
     });
@@ -401,7 +398,7 @@ describe("Settlement", () => {
       const principal = 1000n * ONE_TOKEN;
       const fee = (principal * SETTLEMENT_FEE_BPS) / BPS_DENOMINATOR;
       await token.connect(alice).approve(await settlement.getAddress(), principal + fee);
-      await settlement.connect(alice).settleEnergy(await bob.getAddress(), principal, 100n);
+      await settlement.connect(alice).settleEnergy(await bob.getAddress(), principal, principal);
 
       // Tokens are money, not coupons. Supply may only move up (via mint).
       expect(await token.totalSupply()).to.equal(supplyBefore);
@@ -434,7 +431,7 @@ describe("Settlement", () => {
       const principal = 200n * ONE_TOKEN;
       const fee = (principal * SETTLEMENT_FEE_BPS) / BPS_DENOMINATOR;
       await token.connect(alice).approve(await settlement.getAddress(), principal + fee);
-      await settlement.connect(alice).settleEnergy(await bob.getAddress(), principal, 250n);
+      await settlement.connect(alice).settleEnergy(await bob.getAddress(), principal, principal);
 
       expect(await mintingEngine.totalVerifiedEnergyInStorage()).to.equal(energyBefore);
       expect(await token.totalSupply()).to.equal(supplyBefore);
@@ -454,14 +451,14 @@ describe("Settlement", () => {
       const sys = await loadFixture(deployWithPerimeter);
       const principal = await fund(sys, 20n);
       await sys.settlement.connect(sys.governor).setParticipantVPP(await sys.bob.getAddress(), VPP_B);
-      await expect(sys.settlement.connect(sys.alice).settleEnergy(await sys.bob.getAddress(), principal, 0n))
+      await expect(sys.settlement.connect(sys.alice).settleEnergy(await sys.bob.getAddress(), principal, principal))
         .to.be.revertedWithCustomError(sys.settlement, "OutsidePerimeter");
     });
 
     it("reverts when the payer is in no VPP at all", async () => {
       const sys = await loadFixture(deployFullSystem);
       const principal = await fund(sys, 20n);
-      await expect(sys.settlement.connect(sys.alice).settleEnergy(await sys.bob.getAddress(), principal, 0n))
+      await expect(sys.settlement.connect(sys.alice).settleEnergy(await sys.bob.getAddress(), principal, principal))
         .to.be.revertedWithCustomError(sys.settlement, "OutsidePerimeter");
     });
 
@@ -469,7 +466,7 @@ describe("Settlement", () => {
       const sys = await loadFixture(deployWithPerimeter);
       const principal = await fund(sys, 20n);
       await sys.settlement.connect(sys.governor).setParticipantVPP(await sys.bob.getAddress(), ethers.ZeroHash);
-      await expect(sys.settlement.connect(sys.alice).settleEnergy(await sys.bob.getAddress(), principal, 0n))
+      await expect(sys.settlement.connect(sys.alice).settleEnergy(await sys.bob.getAddress(), principal, principal))
         .to.be.revertedWithCustomError(sys.settlement, "OutsidePerimeter");
     });
 
@@ -485,6 +482,29 @@ describe("Settlement", () => {
         .to.emit(sys.settlement, "ParticipantVPPSet")
         .withArgs(await sys.alice.getAddress(), VPP_A);
       expect(await sys.settlement.participantVPP(await sys.alice.getAddress())).to.equal(VPP_A);
+    });
+
+    it("settles at the floating index: notes = kWh ÷ index, within 1%", async () => {
+      const sys = await loadFixture(deployWithPerimeter);
+      const principal = await fund(sys, 20n); // index = 1.0 → 10 notes buy 10 kWh
+      await expect(sys.settlement.connect(sys.alice).settleEnergy(await sys.bob.getAddress(), principal, principal))
+        .to.emit(sys.settlement, "EnergySettled");
+    });
+
+    it("rejects a price off the index (OffIndexRate)", async () => {
+      const sys = await loadFixture(deployWithPerimeter);
+      const principal = await fund(sys, 20n);
+      // 10 notes for 1 kWh — ten times the note's energy content.
+      await expect(sys.settlement.connect(sys.alice).settleEnergy(await sys.bob.getAddress(), principal, ONE_TOKEN))
+        .to.be.revertedWithCustomError(sys.settlement, "OffIndexRate");
+    });
+
+    it("accepts a quote that drifted inside the 1% band", async () => {
+      const sys = await loadFixture(deployWithPerimeter);
+      const principal = await fund(sys, 20n);
+      const kwh = (principal * 10_050n) / 10_000n; // index moved 0.5% since the quote
+      await expect(sys.settlement.connect(sys.alice).settleEnergy(await sys.bob.getAddress(), principal, kwh))
+        .to.emit(sys.settlement, "EnergySettled");
     });
 
     it("moving a note stays open across perimeters (crossVPPSettle)", async () => {
