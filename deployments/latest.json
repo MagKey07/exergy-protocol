@@ -19,10 +19,10 @@
   "implementations": {
     "MintingEngine": "0x20f68b159908B7C55d5668281F96Ac935C8c06AE",
     "OracleRouter": "0xc5140D9b391b92001c370eBe89Ebaa6628d8B252",
-    "Settlement": "0x8E44f5eFd5Bdc6EABaAc75502F08722aAc40d9c6",
+    "Settlement": "0xA58A4bF6867027c30aECbB666fD0d265f1a3383b",
     "ProtocolGovernance": "0xf5f602D0cafAA3eb33592CCEF88c9e63ffbb3aBd"
   },
   "deployedAt": "2026-05-09T16:38:25.080Z",
   "blockNumber": 266836628,
-  "lastUpgradeAt": "2026-10-03T15:37:10.216Z"
+  "lastUpgradeAt": "2026-10-03T16:01:29.275Z"
 }
