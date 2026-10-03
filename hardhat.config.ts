@@ -42,19 +42,8 @@ const config: HardhatUserConfig = {
     },
   },
   etherscan: {
-    apiKey: {
-      arbitrumSepolia: ARBISCAN_API_KEY,
-    },
-    customChains: [
-      {
-        network: "arbitrumSepolia",
-        chainId: 421614,
-        urls: {
-          apiURL: "https://api-sepolia.arbiscan.io/api",
-          browserURL: "https://sepolia.arbiscan.io",
-        },
-      },
-    ],
+    // Etherscan API v2: one key for all chains (Arbiscan's v1 API is closed).
+    apiKey: ARBISCAN_API_KEY,
   },
   gasReporter: {
     enabled: REPORT_GAS,
