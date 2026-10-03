@@ -62,11 +62,24 @@ export const XRGY_TOKEN_ABI = [
 ] as const;
 
 export const SETTLEMENT_ABI = [
-  "function mintingFeeBps() external view returns (uint16)",
-  "function settlementFeeBps() external view returns (uint16)",
+  "function mintingFeeBps() external view returns (uint256)",
+  "function settlementFeeBps() external view returns (uint256)",
+  // Energy for a note, inside one VPP perimeter, at the floating index:
+  // tokenAmount = kwhConsumed / floatingIndex (±1%). Both 18-decimal.
   "function settleEnergy(address provider, uint256 tokenAmount, uint256 kwhConsumed) external",
+  // Moving a note to a participant of any VPP — no wire needed.
   "function crossVPPSettle(address receiver, bytes32 counterpartyVPPId, uint256 tokenAmount) external",
+  "function participantVPP(address participant) external view returns (bytes32)",
+  "function setParticipantVPP(address participant, bytes32 vppId) external",
+  "function INDEX_RATE_TOLERANCE_BPS() external view returns (uint256)",
 
-  "event MintingFeeCollected(address indexed mintRecipient, uint256 grossAmount, uint256 feeAmount)",
-  "event Settled(address indexed payer, address indexed provider, uint256 tokenAmount, uint256 kwhConsumed, uint256 fee)",
+  "event EnergySettled(address indexed payer, address indexed provider, uint256 tokensTransferred, uint256 kwhConsumed, uint256 feePaid)",
+  "event CrossVPPSettled(address indexed payer, address indexed receiver, bytes32 indexed counterpartyVPPId, uint256 tokensTransferred, uint256 feePaid)",
+  "event ParticipantVPPSet(address indexed participant, bytes32 indexed vppId)",
+  "event FeesDistributed(uint256 treasuryAmt, uint256 teamAmt, uint256 ecosystemAmt, uint256 insuranceAmt)",
+
+  "error OutsidePerimeter(address payer, address provider)",
+  "error OffIndexRate(uint256 tokensPaid, uint256 tokensAtIndex)",
+  "error KwhRequired()",
+  "error NoEnergyBehindNotes()",
 ] as const;
