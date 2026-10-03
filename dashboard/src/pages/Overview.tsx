@@ -76,7 +76,7 @@ export function Overview(): JSX.Element {
       <PageHeader
         eyebrow="Network"
         title="Protocol Overview"
-        subtitle="Live state of the Exergy settlement layer. Every $XRGY in circulation is a receipt for verified physical energy storage. Tokens are minted only by Proof-of-Charge — never sold, never pre-mined."
+        subtitle="Live state of the Exergy settlement layer. Every note in circulation is backed by measured energy stored across the network. Notes are minted only against verified charge — never sold, never pre-mined."
       />
 
       <ContractsBanner />
@@ -85,19 +85,19 @@ export function Overview(): JSX.Element {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 mb-4">
         <Stat
           className="lg:col-span-6"
-          label="Total $XRGY supply"
+          label="Notes in circulation"
           value={formatToken(stats.totalSupply)}
           unit={stats.tokenSymbol ?? "XRGY"}
           size="hero"
-          hint="Tokens minted from verified energy. No pre-mine."
+          hint="Minted only from verified stored energy. No pre-mine."
           loading={statsLoading}
         />
         <Stat
           className="lg:col-span-3"
           label="Floating index"
           value={formatFloatingIndex(floatingIndex)}
-          unit="kWh / token"
-          hint="Energy density of every $XRGY in circulation."
+          unit="kWh / note"
+          hint="Stored energy behind each note, network-wide. Below 1.0 means part of the energy stored at minting has since been used: consumption shows up here — notes are never burned."
         />
         <Stat
           className="lg:col-span-3"
@@ -105,7 +105,7 @@ export function Overview(): JSX.Element {
           value={era.era !== undefined ? Number(era.era).toString() : "—"}
           hint={
             era.rate !== undefined
-              ? `Mint rate: ${formatEraRate(era.rate)} XRGY / kWh`
+              ? `Mint rate: ${formatEraRate(era.rate)} notes / kWh`
               : "Loading rate…"
           }
         />
@@ -153,7 +153,7 @@ export function Overview(): JSX.Element {
                   <TableHead>Epoch</TableHead>
                   <TableHead>VPP</TableHead>
                   <TableHead className="text-right">kWh verified</TableHead>
-                  <TableHead className="text-right">$XRGY minted</TableHead>
+                  <TableHead className="text-right">Notes minted</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -196,7 +196,7 @@ export function Overview(): JSX.Element {
                 <TableRow>
                   <TableHead>Operator</TableHead>
                   <TableHead className="text-right">Total kWh</TableHead>
-                  <TableHead className="text-right">Total $XRGY</TableHead>
+                  <TableHead className="text-right">Total notes</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

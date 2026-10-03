@@ -33,8 +33,8 @@ export default function App(): JSX.Element {
         <div className="hairline" />
         <div className="flex flex-col items-start justify-between gap-2 pt-6 text-xs text-fg-subtle sm:flex-row">
           <span>
-            Exergy Protocol — Phase 0 testnet preview. Tokens are receipts for
-            verified physical energy storage. No pre-mine, no token sale.
+            Exergy Protocol — Phase 0 testnet preview. Notes are minted only against
+            measured stored energy. No pre-mine, no sale.
           </span>
           <span className="font-mono">Arbitrum Sepolia · ChainID 421614</span>
         </div>

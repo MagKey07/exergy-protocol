@@ -74,9 +74,9 @@ export function Tokenomics(): JSX.Element {
   return (
     <>
       <PageHeader
-        eyebrow="Tokenomics"
+        eyebrow="Note economics"
         title="Halving & supply curve"
-        subtitle="Mint rate halves every 1,000,000 $XRGY minted — independent of adoption, dependent on physics. Even at zero new VPPs, existing batteries keep cycling and the network keeps minting."
+        subtitle="The mint rate halves every 1,000,000 notes minted. After each halving, the same stored kilowatt-hour mints half as many notes."
       />
 
       <ContractsBanner />
@@ -86,24 +86,24 @@ export function Tokenomics(): JSX.Element {
           className="lg:col-span-4"
           label="Current era"
           value={currentEra.toString()}
-          hint={`Mint rate: ${formatEraRate(era.rate)} XRGY / kWh`}
+          hint={`Mint rate: ${formatEraRate(era.rate)} notes / kWh`}
           size="hero"
         />
         <Stat
           className="lg:col-span-4"
           label="Floating index"
           value={formatFloatingIndex(floatingIndex)}
-          unit="kWh / token"
-          hint="Energy density per circulating $XRGY."
+          unit="kWh / note"
+          hint="Stored energy behind each note, network-wide."
         />
         <Stat
           className="lg:col-span-4"
-          label="Cumulative supply"
+          label="Notes minted"
           value={formatToken(stats.totalSupply)}
           unit="XRGY"
           hint={
             era.nextHalvingAtSupply !== undefined
-              ? `Next halving at ${era.nextHalvingAtSupply.toLocaleString()} XRGY`
+              ? `Next halving at ${era.nextHalvingAtSupply.toLocaleString()} notes`
               : "—"
           }
         />
@@ -131,7 +131,7 @@ export function Tokenomics(): JSX.Element {
                   />
                   <Tooltip
                     cursor={{ stroke: "hsl(var(--border))" }}
-                    formatter={(v: number) => [`${v} XRGY/kWh`, "Mint rate"]}
+                    formatter={(v: number) => [`${v} notes/kWh`, "Mint rate"]}
                   />
                   <Line
                     type="monotone"
@@ -145,8 +145,8 @@ export function Tokenomics(): JSX.Element {
               </ResponsiveContainer>
             </div>
             <p className="mt-3 max-w-2xl text-xs leading-relaxed text-fg-subtle">
-              Era 0 mints 1.0 XRGY per verified kWh. Each subsequent era requires 2× the energy for
-              half the tokens. By Era 8, ≈128M kWh of stored energy mints just 1M tokens.
+              Era 0 mints 1.0 note per verified kWh. Each following era mints half as many notes
+              per kWh. By Era 8, ≈128M kWh of stored energy mints just 1M notes.
             </p>
           </CardContent>
         </Card>
@@ -208,7 +208,7 @@ export function Tokenomics(): JSX.Element {
               <TableRow>
                 <TableHead>Era</TableHead>
                 <TableHead>Supply range</TableHead>
-                <TableHead className="text-right">Rate (XRGY / kWh)</TableHead>
+                <TableHead className="text-right">Rate (notes / kWh)</TableHead>
                 <TableHead className="text-right">Energy for era (kWh)</TableHead>
                 <TableHead className="text-right">Status</TableHead>
               </TableRow>
@@ -248,21 +248,20 @@ export function Tokenomics(): JSX.Element {
 
       <div className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className="panel px-5 py-4">
-          <div className="stat-label mb-2">Why halving always happens</div>
+          <div className="stat-label mb-2">What halving does</div>
           <p className="text-sm text-fg-muted leading-relaxed">
-            Halving triggers by token count, not adoption. Even with zero new VPPs, existing batteries
-            keep cycling — slowly in a quiet market, fast in a booming one, but always forward. After
-            each halving, the same energy mints half the tokens, so each token represents more stored
-            kWh. The floating index ticks up.
+            Halving is triggered by the number of notes minted, not by time. After each halving the
+            same stored kilowatt-hour mints half as many notes, so new notes enter with more energy
+            behind them. The floating index follows the real stock: it rises when the network stores
+            more than it uses, and falls when it uses more than it stores.
           </p>
         </div>
         <div className="panel px-5 py-4">
-          <div className="stat-label mb-2">Why no token sale</div>
+          <div className="stat-label mb-2">Why notes are never sold</div>
           <p className="text-sm text-fg-muted leading-relaxed">
-            $XRGY is never sold. Tokens are receipts for verified physical storage — no pre-mine, no
-            ICO, no allocation. Investors hold equity in Key Energy, Inc. (Delaware C-Corp); the
-            corporate treasury captures 40% of protocol fees in $XRGY. This is what structurally
-            distinguishes Exergy from infrastructure-token plays.
+            A note comes into existence only one way: by storing energy. It is never sold — no
+            pre-mine, no ICO, no allocation. Investors hold equity in Key Energy, Inc. (Delaware
+            C-Corp), never notes.
           </p>
         </div>
       </div>

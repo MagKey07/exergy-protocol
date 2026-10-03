@@ -20,7 +20,7 @@ const navItems: ReadonlyArray<{ to: string; label: string; end?: boolean }> = [
   { to: "/my-vpp", label: "My VPP" },
   { to: "/devices", label: "Devices" },
   { to: "/settlement", label: "Settlement" },
-  { to: "/tokenomics", label: "Tokenomics" },
+  { to: "/tokenomics", label: "Note economics" },
 ];
 
 export function Header(): JSX.Element {
@@ -91,6 +91,25 @@ export function Header(): JSX.Element {
           />
         </div>
       </div>
+
+      {/* Mobile nav — the desktop row is hidden below md */}
+      <nav className="flex gap-1 overflow-x-auto px-4 pb-2 md:hidden">
+        {navItems.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.end}
+            className={({ isActive }) =>
+              cn(
+                "shrink-0 rounded-md px-3 py-1.5 text-sm transition-colors",
+                isActive ? "text-fg bg-surface-2" : "text-fg-muted",
+              )
+            }
+          >
+            {item.label}
+          </NavLink>
+        ))}
+      </nav>
     </header>
   );
 }
