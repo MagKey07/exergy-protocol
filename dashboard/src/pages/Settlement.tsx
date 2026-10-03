@@ -167,6 +167,30 @@ function SettlementForm({ kind, feeBps, balance }: SettlementFormProps): JSX.Ele
 
   const insufficient = balance !== undefined && totalDebit !== undefined && balance < totalDebit;
 
+  // Energy for a note travels over a wire, so a P2P settle is only accepted when
+  // payer and recipient sit in the same VPP perimeter. Check before submitting.
+  const { address: payer } = useAccount();
+  const ZERO32 = ("0x" + "0".repeat(64)) as Hex;
+  const { data: payerVpp } = useReadContract({
+    address: contractAddresses.settlement,
+    abi: settlementAbi,
+    functionName: "participantVPP",
+    args: payer ? [payer] : undefined,
+    query: { enabled: kind === "p2p" && Boolean(payer) },
+  });
+  const { data: recipientVpp } = useReadContract({
+    address: contractAddresses.settlement,
+    abi: settlementAbi,
+    functionName: "participantVPP",
+    args: validRecipient ? [to as Address] : undefined,
+    query: { enabled: kind === "p2p" && Boolean(validRecipient) },
+  });
+  const outsidePerimeter =
+    kind === "p2p" &&
+    payerVpp !== undefined &&
+    (payerVpp === ZERO32 ||
+      (validRecipient && recipientVpp !== undefined && recipientVpp !== payerVpp));
+
   // Hashed locally for operator bookkeeping. NOT sent on-chain — Settlement.sol has no memo parameter.
   const memoHash = useMemo<Hex>(() => {
     if (!memo.trim()) return ("0x" + "0".repeat(64)) as Hex;
@@ -187,7 +211,7 @@ function SettlementForm({ kind, feeBps, balance }: SettlementFormProps): JSX.Ele
   const { isLoading: confirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
 
   const canSubmit =
-    validRecipient && validVpp && amountWei !== undefined && !insufficient && !isPending;
+    validRecipient && validVpp && amountWei !== undefined && !insufficient && !outsidePerimeter && !isPending;
 
   const onSubmit = (): void => {
     if (!canSubmit || !amountWei) return;
@@ -306,7 +330,20 @@ function SettlementForm({ kind, feeBps, balance }: SettlementFormProps): JSX.Ele
             Insufficient $XRGY balance — fee is paid on top of the principal.
           </div>
         )}
-        {error && <div className="text-xs text-danger break-words">{(error as Error).message}</div>}
+        {outsidePerimeter && (
+          <div className="text-xs text-danger">
+            {payerVpp === ZERO32
+              ? "Your wallet is not registered in any VPP. Energy for a note settles only between participants of the same VPP — ask your VPP operator to add you."
+              : "This recipient is not in your VPP. Energy for a note travels over a wire, so it settles only inside one VPP. To move a note to another VPP, use the Cross-VPP tab."}
+          </div>
+        )}
+        {error && (
+          <div className="text-xs text-danger break-words">
+            {(error as Error).message.includes("OutsidePerimeter")
+              ? "Rejected: payer and recipient are not in the same VPP. Use Cross-VPP to move a note to another VPP."
+              : (error as Error).message}
+          </div>
+        )}
         {isSuccess && (
           <div className="text-xs text-accent">
             Settled. Tx <span className="font-mono">{shortAddress(txHash)}</span>

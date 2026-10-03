@@ -253,6 +253,21 @@ export const oracleRouterAbi = [
 export const settlementAbi = [
   {
     type: "function",
+    name: "participantVPP",
+    stateMutability: "view",
+    inputs: [{ name: "participant", type: "address" }],
+    outputs: [{ name: "", type: "bytes32" }],
+  },
+  {
+    type: "error",
+    name: "OutsidePerimeter",
+    inputs: [
+      { name: "payer", type: "address" },
+      { name: "provider", type: "address" },
+    ],
+  },
+  {
+    type: "function",
     name: "settlementFeeBps",
     stateMutability: "view",
     inputs: [],
