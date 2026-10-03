@@ -50,6 +50,8 @@ contract Settlement is
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     bytes32 public constant FEE_MANAGER_ROLE = keccak256("FEE_MANAGER_ROLE");
+    /// @notice May place participants into VPP perimeters (Phase 0: admin; Phase 1: VPP operators).
+    bytes32 public constant PERIMETER_MANAGER_ROLE = keccak256("PERIMETER_MANAGER_ROLE");
 
     /// @notice Hard ceiling on any fee bps to defang misconfigured fees.
     uint256 public constant MAX_FEE_BPS = 1_000; // 10%
@@ -76,6 +78,10 @@ contract Settlement is
 
     /// @dev Reserved storage gap for upgradeable layout safety.
     uint256[40] private __gap;
+
+    /// @dev participant => VPP perimeter id. Appended after the gap so the
+    ///      existing proxy layout is untouched on upgrade.
+    mapping(address => bytes32) private _participantVPP;
 
     // ---------------------------------------------------------------------
     // Initializer
@@ -134,6 +140,13 @@ contract Settlement is
         if (provider == address(0)) revert ZeroAddress();
         if (tokenAmount == 0) revert AmountZero();
 
+        // Energy for a note travels over a wire, so it can only happen inside
+        // one VPP. The note itself may travel anywhere (crossVPPSettle).
+        bytes32 payerVPP = _participantVPP[msg.sender];
+        if (payerVPP == bytes32(0) || payerVPP != _participantVPP[provider]) {
+            revert OutsidePerimeter(msg.sender, provider);
+        }
+
         uint256 fee = (tokenAmount * settlementFeeBps) / BPS_DENOMINATOR;
 
         // Pull principal → provider. (NO burn; this is a transfer.)
@@ -176,6 +189,25 @@ contract Settlement is
         // only routes tokens.
 
         emit CrossVPPSettled(msg.sender, receiver, counterpartyVPPId, tokenAmount, fee);
+    }
+
+    // ---------------------------------------------------------------------
+    // VPP perimeter
+    // ---------------------------------------------------------------------
+
+    /// @inheritdoc ISettlement
+    function setParticipantVPP(address participant, bytes32 vppId) external override {
+        if (!hasRole(PERIMETER_MANAGER_ROLE, msg.sender) && !hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
+            revert NotPerimeterManager();
+        }
+        if (participant == address(0)) revert ZeroAddress();
+        _participantVPP[participant] = vppId;
+        emit ParticipantVPPSet(participant, vppId);
+    }
+
+    /// @inheritdoc ISettlement
+    function participantVPP(address participant) external view override returns (bytes32) {
+        return _participantVPP[participant];
     }
 
     // ---------------------------------------------------------------------

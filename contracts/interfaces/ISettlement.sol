@@ -43,6 +43,8 @@ interface ISettlement {
         uint256 tokensTransferred,
         uint256 feePaid
     );
+    /// @notice A participant was placed into (or removed from, vppId == 0) a VPP perimeter.
+    event ParticipantVPPSet(address indexed participant, bytes32 indexed vppId);
     /// @notice Fees were distributed to the four recipients.
     event FeesDistributed(uint256 treasuryAmt, uint256 teamAmt, uint256 ecosystemAmt, uint256 insuranceAmt);
     /// @notice Fee recipients were updated.
@@ -62,6 +64,11 @@ interface ISettlement {
     error AmountZero();
     /// @notice Allowance/balance insufficient for the requested settle amount.
     error InsufficientFunds();
+    /// @notice settleEnergy is energy for a note, delivered over a wire: payer and
+    ///         provider must be registered in the same VPP perimeter.
+    error OutsidePerimeter(address payer, address provider);
+    /// @notice Caller may not manage VPP perimeters.
+    error NotPerimeterManager();
 
     /**
      * @notice Settle energy consumption with a same-VPP provider.
@@ -71,6 +78,14 @@ interface ISettlement {
      * @param kwhConsumed kWh consumed; informs MintingEngine.totalVerifiedEnergyInStorage.
      */
     function settleEnergy(address provider, uint256 tokenAmount, uint256 kwhConsumed) external;
+    /**
+     * @notice Place a participant into a VPP perimeter (vppId == 0 removes it).
+     * @dev Only addresses in the same perimeter can settle energy with each other.
+     *      Moving a note anywhere stays open — see crossVPPSettle.
+     */
+    function setParticipantVPP(address participant, bytes32 vppId) external;
+    /// @notice The VPP perimeter a participant belongs to (0 if none).
+    function participantVPP(address participant) external view returns (bytes32);
 
     /**
      * @notice Cross-VPP P2P transfer: pay another VPP's participant.
