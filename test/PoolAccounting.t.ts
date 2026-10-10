@@ -89,10 +89,39 @@ describe("Pool accounting — pool tracks what devices currently hold", () => {
     const before = await engine.totalVerifiedEnergyInStorage();
 
     // Idle battery bleeds down. Cycle counter does not advance; nothing was minted or settled.
-    await report(74, 100, 0n).catch(() => null); // zero-mint may revert; pool sync is what matters
+    // This report MUST be accepted: it carries no new energy, only the lower charge.
+    // (An earlier version of this test swallowed the revert and passed anyway — which is
+    // how a rejected discharge-only report went unnoticed until 10.10.2026.)
+    const mintedBefore = await engine.totalTokensMinted();
+    await expect(report(74, 100, 0n)).to.emit(engine, "StateOfChargeReported");
     const after = await engine.totalVerifiedEnergyInStorage();
 
-    expect(after).to.be.lte(before);
+    expect(after).to.be.lt(before);
+    expect(after).to.equal((CAPACITY * 74n) / 100n);
+    expect(await engine.totalTokensMinted()).to.equal(mintedBefore);
+  });
+
+  it("a discharge-only report lowers the pool at once, with no charge in between", async () => {
+    await report(100, 100, kwh("5"));
+    // Gives 10 kWh to a neighbour and reports again before any new sun.
+    await report(25, 100, 0n);
+    expect(await engine.totalVerifiedEnergyInStorage()).to.equal((CAPACITY * 25n) / 100n);
+    // And again, lower still — several discharge-only reports in a row are fine.
+    await report(10, 100, 0n);
+    expect(await engine.totalVerifiedEnergyInStorage()).to.equal((CAPACITY * 10n) / 100n);
+  });
+
+  it("a report with no new energy cannot RAISE the charge", async () => {
+    await report(40, 100, kwh("5"));
+    await expect(report(60, 100, 0n)).to.be.revertedWithCustomError(engine, "ChargeRiseWithoutEnergy");
+    // Unchanged charge is fine (a heartbeat).
+    await expect(report(40, 100, 0n)).to.emit(engine, "StateOfChargeReported");
+    expect(await engine.totalVerifiedEnergyInStorage()).to.equal((CAPACITY * 40n) / 100n);
+  });
+
+  it("a brand-new device cannot claim stored energy without minting through the wear checks", async () => {
+    await expect(report(50, 100, 0n)).to.be.revertedWithCustomError(engine, "ChargeRiseWithoutEnergy");
+    expect(await engine.totalVerifiedEnergyInStorage()).to.equal(0n);
   });
 
   it("LEAK 3 — capacity fade: a smaller battery cannot back the same energy", async () => {

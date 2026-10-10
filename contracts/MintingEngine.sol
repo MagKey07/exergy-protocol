@@ -236,6 +236,22 @@ contract MintingEngine is
             epoch
         );
 
+        // -------- STATE-OF-CHARGE REPORT (no new energy) --------
+        // A battery that only discharged since its last packet has nothing to mint, but
+        // its lower charge must still reach the pool — otherwise the floating index stays
+        // overstated until the device next charges. Such a packet may only keep or LOWER
+        // the reported charge: raising it without new energy would lift the index with
+        // nothing stored behind it.
+        if (kwhAmount == 0) {
+            if (chargeLevelPercent > 100) revert InvalidChargeLevel(chargeLevelPercent);
+            uint256 attestedHeld = (storageCapacity * uint256(chargeLevelPercent)) / 100;
+            uint256 previouslyHeld = _deviceCycleState[deviceId].lastReportedEnergy;
+            if (attestedHeld > previouslyHeld) revert ChargeRiseWithoutEnergy(previouslyHeld, attestedHeld);
+            _syncDeviceStoredEnergy(deviceId, storageCapacity, chargeLevelPercent);
+            emit StateOfChargeReported(deviceId, vppAddress, attestedHeld, totalVerifiedEnergyInStorage);
+            return 0;
+        }
+
         uint256 era = currentEra;
         uint256 rate = _rateForEra(era);
         // SCALING: kwhAmount is 18-decimal (1 kWh = 1e18), rate is 18-decimal (1 token/kWh = 1e18).

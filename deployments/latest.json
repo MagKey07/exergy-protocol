@@ -17,12 +17,12 @@
     "ProtocolGovernance": "0x6444902f410aFd866BDA058d64C596ad4Aa1ad70"
   },
   "implementations": {
-    "MintingEngine": "0x20f68b159908B7C55d5668281F96Ac935C8c06AE",
+    "MintingEngine": "0x5D8B52d98D783688f7FB5ed5d613f91Da5de8263",
     "OracleRouter": "0xc5140D9b391b92001c370eBe89Ebaa6628d8B252",
     "Settlement": "0xA58A4bF6867027c30aECbB666fD0d265f1a3383b",
     "ProtocolGovernance": "0xf5f602D0cafAA3eb33592CCEF88c9e63ffbb3aBd"
   },
   "deployedAt": "2026-05-09T16:38:25.080Z",
   "blockNumber": 266836628,
-  "lastUpgradeAt": "2026-10-03T16:01:29.275Z"
+  "lastUpgradeAt": "2026-10-10T13:09:48.270Z"
 }

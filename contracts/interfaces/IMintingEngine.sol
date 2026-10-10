@@ -148,6 +148,26 @@ interface IMintingEngine {
     error InvalidChargeLevel(uint8 chargeLevelPercent);
 
     /**
+     * @notice A packet carrying no new energy (kwhAmount == 0) attested MORE stored energy
+     *         than the device's previous report. Charge can only rise through a charge
+     *         packet that passes the proof-of-wear checks; otherwise anyone could lift the
+     *         floating index without storing anything.
+     */
+    error ChargeRiseWithoutEnergy(uint256 previouslyHeld, uint256 attestedHeld);
+
+    /**
+     * @notice A device reported its current state of charge with no new energy to mint.
+     *         Discharge, self-use and self-discharge reach the pool through this report
+     *         instead of waiting for the device's next charge.
+     */
+    event StateOfChargeReported(
+        bytes32 indexed deviceId,
+        address indexed vppAddress,
+        uint256 heldKwh,
+        uint256 totalVerifiedEnergyInStorage
+    );
+
+    /**
      * @notice Settlement reported energy leaving storage. Informational only: the pool
      *         itself moves when the discharging device sends its next signed packet.
      * @param kwhConsumed Quantity reported by Settlement.
