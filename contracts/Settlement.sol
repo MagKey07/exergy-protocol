@@ -225,22 +225,16 @@ contract Settlement is
     }
 
     // ---------------------------------------------------------------------
-    // Minting fee skim — called by MintingEngine
+    // Minting fee distribution — called by MintingEngine
     // ---------------------------------------------------------------------
 
     /// @inheritdoc ISettlement
-    function collectMintingFee(
-        address mintRecipient,
-        uint256 grossMintedAmount
-    ) external override whenNotPaused returns (uint256 feeTaken) {
+    /// @dev Not gated by `whenNotPaused`: pausing settlement must never block
+    ///      minting for verified energy.
+    function distributeMintingFee(uint256 feeAmount) external override {
         if (msg.sender != address(mintingEngine)) revert NotMintingEngine();
-        if (grossMintedAmount == 0) return 0;
-
-        feeTaken = (grossMintedAmount * mintingFeeBps) / BPS_DENOMINATOR;
-        if (feeTaken == 0) return 0;
-
-        token.safeTransferFrom(mintRecipient, address(this), feeTaken);
-        _distributeFees(feeTaken);
+        if (feeAmount == 0) return;
+        _distributeFees(feeAmount);
     }
 
     // ---------------------------------------------------------------------

@@ -183,10 +183,8 @@ export class Submitter {
     const fn = (this.router as unknown as Record<string, SubmitFn>)[overload];
     if (!fn) throw new Error(`submitMeasurement overload missing on contract: ${overload}`);
 
-    // Explicit high gas limit. Solidity try/catch in MintingEngine.commitVerifiedEnergy
-    // allocates only 63/64 of remaining gas to inner Settlement.collectMintingFee call.
-    // If gas estimate is tight (because tx succeeds via try/catch swallow), the inner
-    // call OOG → fee silently skipped. Pass explicit budget to ensure fee path runs.
+    // Explicit gas budget with headroom: one submission verifies two signatures,
+    // mints, and distributes the minting fee to four recipients.
     const txOpts = { gasLimit: 600_000n };
 
     if (shape === 0) {

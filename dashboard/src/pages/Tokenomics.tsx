@@ -86,7 +86,7 @@ export function Tokenomics(): JSX.Element {
           className="lg:col-span-4"
           label="Current era"
           value={currentEra.toString()}
-          hint={`Mint rate: ${formatEraRate(era.rate)} notes / kWh`}
+          hint={`Mint rate: ${formatEraRate(era.rate)} per kWh`}
           size="hero"
         />
         <Stat
@@ -146,7 +146,7 @@ export function Tokenomics(): JSX.Element {
             </div>
             <p className="mt-3 max-w-2xl text-xs leading-relaxed text-fg-subtle">
               Era 0 mints 1.0 note per verified kWh. Each following era mints half as many notes
-              per kWh. By Era 8, ≈128M kWh of stored energy mints just 1M notes.
+              per kWh. By Era 7, ≈128M kWh of stored energy mints just 1M notes.
             </p>
           </CardContent>
         </Card>

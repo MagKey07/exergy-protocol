@@ -230,7 +230,7 @@ async function main() {
   // ╭─────────────────────────────────────────────────────╮
   // │ Step 4: Test VPP approves Settlement on XRGYToken   │
   // ╰─────────────────────────────────────────────────────╯
-  console.log("──── Step 4: Approve Settlement on XRGYToken ────");
+  console.log("──── Step 4: Approve Settlement on XRGYToken (for settlement payments; the minting fee needs no approval) ────");
   const tokenAsTestVpp = new ethers.Contract(
     ARBITRUM_SEPOLIA.contracts.xrgyToken,
     XRGY_TOKEN_ABI,

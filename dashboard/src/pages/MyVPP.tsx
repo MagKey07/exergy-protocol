@@ -133,7 +133,7 @@ export function MyVPP(): JSX.Element {
                 {devicesLoading && devices.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={3} className="text-center text-fg-subtle py-8">
-                      Scanning the chain for this operator's devices. Without an indexer this can time out; the balance above comes straight from the contract.
+                      Loading this operator's devices…
                     </TableCell>
                   </TableRow>
                 )}

@@ -12,10 +12,8 @@ import { SignedPacket } from "./signing";
 /**
  * Recommended gas limit for `submitMeasurement`.
  *
- * MintingEngine wraps `Settlement.collectMintingFee` in a Solidity
- * try/catch. EIP-150 forwards only 63/64 of remaining gas to the inner
- * call, so a tight outer estimate makes the inner call OOG-revert
- * silently — your mint succeeds but the 1% fee is never collected.
+ * One submission verifies two signatures, mints, and distributes the 1%
+ * minting fee to four recipients.
  *
  * 600,000 is comfortably above the worst-case observed gas usage
  * (~430k) on Arbitrum Sepolia. Adjust upward if you start hitting

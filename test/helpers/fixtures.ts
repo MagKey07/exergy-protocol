@@ -35,6 +35,9 @@ export const EPOCH_DURATION_SECONDS = 24n * 60n * 60n;
 
 /** Fee bps per Technical_Blueprint.md §2.4. */
 export const MINT_FEE_BPS = 100n; // 1.00%
+
+/** What a VPP receives from a mint of `gross` notes: the minting fee is split off at mint time. */
+export const netOfMintFee = (gross: bigint): bigint => gross - (gross * MINT_FEE_BPS) / 10_000n;
 export const SETTLEMENT_FEE_BPS = 25n; // 0.25%
 export const BPS_DENOMINATOR = 10_000n;
 

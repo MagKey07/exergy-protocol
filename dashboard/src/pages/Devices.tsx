@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 
 import { contractAddresses, contractsConfigured } from "@/wagmi";
 import { formatKwh, shortAddress, relativeTime } from "@/lib/utils";
+import { getLogsChunked } from "@/lib/chunkedLogs";
 
 /**
  * Network-wide device registry.
@@ -55,18 +56,17 @@ export function Devices(): JSX.Element {
 
     (async () => {
       try {
+        const fromBlock = BigInt(import.meta.env.VITE_DEPLOY_BLOCK ?? "0");
         const [regLogs, measLogs] = await Promise.all([
-          client.getLogs({
+          getLogsChunked(client, {
             address: contractAddresses.oracleRouter,
             event: DEVICE_REGISTERED,
-            fromBlock: BigInt(import.meta.env.VITE_DEPLOY_BLOCK ?? "0"),
-            toBlock: "latest",
+            fromBlock,
           }),
-          client.getLogs({
+          getLogsChunked(client, {
             address: contractAddresses.oracleRouter,
             event: MEASUREMENT_VERIFIED,
-            fromBlock: BigInt(import.meta.env.VITE_DEPLOY_BLOCK ?? "0"),
-            toBlock: "latest",
+            fromBlock,
           }),
         ]);
 
@@ -150,7 +150,7 @@ export function Devices(): JSX.Element {
               <TableRow>
                 <TableHead>Device ID</TableHead>
                 <TableHead>VPP</TableHead>
-                <TableHead className="text-right">Last kWh</TableHead>
+                <TableHead className="text-right">Last kWh added</TableHead>
                 <TableHead className="text-right">Cycles</TableHead>
                 <TableHead className="text-right">Measurements</TableHead>
                 <TableHead className="text-right">Last seen</TableHead>
@@ -160,7 +160,7 @@ export function Devices(): JSX.Element {
               {isLoading && devices.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center text-fg-subtle py-8">
-                    Scanning the chain for registration events. Without an indexer this can take a long time or time out. Individual device records remain readable on-chain and on Arbiscan.
+                    Loading the device registry…
                   </TableCell>
                 </TableRow>
               )}
@@ -168,7 +168,7 @@ export function Devices(): JSX.Element {
                 <TableRow>
                   <TableCell colSpan={6} className="text-center text-fg-subtle py-8">
                     {devices.length === 0
-                      ? "The registry is stored on-chain as a mapping, so it cannot be listed without an indexer (Phase 1). Devices and their measurements are readable individually, and every registration is visible on Arbiscan."
+                      ? "The device registry could not be loaded right now. Every registration is visible on Arbiscan."
                       : "No devices match this filter."}
                   </TableCell>
                 </TableRow>
@@ -198,9 +198,9 @@ export function Devices(): JSX.Element {
 
       <p className="mt-6 max-w-3xl text-xs leading-relaxed text-fg-subtle">
         <span className="text-fg-muted">Proof-of-Wear:</span> every charge cycle physically degrades
-        the battery (~$0.10 / kWh cycled, industry-average lithium-ion). The cumulative-cycles field
-        in each measurement packet is tracked on-chain and surfaced here once the indexer is wired —
-        this is the native Sybil resistance: wash-trading pays real hardware cost.
+        the battery (~$0.10 / kWh cycled, industry-average lithium-ion). The contract tracks
+        cumulative cycles from each measurement packet and rejects more than two full
+        cycles per day — this is the native Sybil resistance: wash-trading pays real hardware cost.
       </p>
     </>
   );

@@ -134,9 +134,7 @@ Narrow ABI fragments covering only the functions and events most integrations ne
 
 ## Why explicit gas limit
 
-`MintingEngine.commitVerifiedEnergy` calls `Settlement.collectMintingFee` inside a Solidity `try/catch` block. Per [EIP-150](https://eips.ethereum.org/EIPS/eip-150), only 63/64 of the remaining gas is forwarded to the inner call. If `submitMeasurement` is called with a tight `estimateGas` value, the inner call OOG-reverts silently — the outer mint succeeds but the 1% protocol fee is never collected.
-
-`DEFAULT_SUBMIT_GAS_LIMIT = 600_000n` is comfortably above the worst-case observed gas cost (~430k) on Arbitrum Sepolia. This Phase 0 workaround is removed in Phase 1 once the engine returns explicit success/failure from the fee call.
+A submission verifies two signatures, mints, and distributes the 1% minting fee to four recipients in one transaction. `DEFAULT_SUBMIT_GAS_LIMIT = 600_000n` leaves comfortable headroom over the observed cost (~430k) on Arbitrum Sepolia. The minting fee is split off inside the mint itself (since 17.10.2026), so it can no longer be skipped silently: the mint either succeeds with its fee or reverts.
 
 ---
 

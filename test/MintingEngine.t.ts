@@ -22,7 +22,10 @@ import {
   deployFullSystem,
   EPOCH_DURATION_SECONDS,
   HALVING_THRESHOLD_WEI,
+  FEE_SPLIT,
+  MINT_FEE_BPS,
   ONE_TOKEN,
+  netOfMintFee,
 } from "./helpers/fixtures";
 
 /** Helper: emulate the OracleRouter calling MintingEngine.commitVerifiedEnergy.
@@ -111,7 +114,8 @@ describe("MintingEngine", () => {
         await vppA.getAddress(),
         100n
       );
-      expect(await token.balanceOf(await vppA.getAddress())).to.equal(100n * ONE_TOKEN);
+      expect(await token.totalSupply()).to.equal(100n * ONE_TOKEN);
+      expect(await token.balanceOf(await vppA.getAddress())).to.equal(netOfMintFee(100n * ONE_TOKEN));
     });
 
     it("crosses to era 1 at 1M tokens minted, then mints 0.5 token/kWh", async () => {
@@ -127,7 +131,7 @@ describe("MintingEngine", () => {
         await vppA.getAddress(),
         999_999n
       );
-      expect(await token.balanceOf(await vppA.getAddress())).to.equal(999_999n * ONE_TOKEN);
+      expect(await token.balanceOf(await vppA.getAddress())).to.equal(netOfMintFee(999_999n * ONE_TOKEN));
       expect(await mintingEngine.currentEra()).to.equal(0n);
 
       // Next mint of 100 kWh would push us through 1M.
@@ -151,10 +155,10 @@ describe("MintingEngine", () => {
       // Documented contract behaviour (MintingEngine.sol header): the packet that
       // crosses the threshold is credited at the pre-halving rate; the halving
       // applies from the next packet on.
-      expect(minted).to.equal(100n * ONE_TOKEN);
+      expect(minted).to.equal(netOfMintFee(100n * ONE_TOKEN));
       const balanceBeforeNext = await token.balanceOf(await vppA.getAddress());
       await mintAs(mintingEngine, await oracleRouter.getAddress(), deviceId, await vppA.getAddress(), 100n);
-      expect((await token.balanceOf(await vppA.getAddress())) - balanceBeforeNext).to.equal(50n * ONE_TOKEN);
+      expect((await token.balanceOf(await vppA.getAddress())) - balanceBeforeNext).to.equal(netOfMintFee(50n * ONE_TOKEN));
     });
 
     it("emits HalvingTriggered when crossing 1M boundary", async () => {
@@ -405,6 +409,57 @@ describe("MintingEngine", () => {
   // hardware-degradation cost actually bites. These tests pin that
   // commitment in code.
   // ---------------------------------------------------------------------
+  // ---------------------------------------------------------------------
+  // Minting fee is split off at mint time. It used to be pulled back from the
+  // VPP with transferFrom, which needed an approval the VPPs never gave, and
+  // the failure was swallowed — on Sepolia ~1.38 notes of fees were never
+  // taken. These tests pin the split.
+  // ---------------------------------------------------------------------
+  describe("minting fee", () => {
+    it("takes 1% at mint without any approval and distributes it 40/20/25/15", async () => {
+      const { mintingEngine, oracleRouter, vppA, token, settlement, treasury, team, ecosystem, insurance } =
+        await loadFixture(deployFullSystem);
+      const vppAddr = await vppA.getAddress();
+      const settlementAddr = await settlement.getAddress();
+      expect(await token.allowance(vppAddr, settlementAddr)).to.equal(0n);
+
+      await mintAs(mintingEngine, await oracleRouter.getAddress(), ethers.id("fee-device"), vppAddr, 100n);
+
+      const gross = 100n * ONE_TOKEN;
+      const fee = (gross * MINT_FEE_BPS) / 10_000n;
+      expect(await token.totalSupply()).to.equal(gross);
+      expect(await token.balanceOf(vppAddr)).to.equal(gross - fee);
+      expect(await token.balanceOf(await treasury.getAddress())).to.equal((fee * FEE_SPLIT.treasury) / 10_000n);
+      expect(await token.balanceOf(await team.getAddress())).to.equal((fee * FEE_SPLIT.team) / 10_000n);
+      expect(await token.balanceOf(await ecosystem.getAddress())).to.equal((fee * FEE_SPLIT.ecosystem) / 10_000n);
+      expect(await token.balanceOf(await insurance.getAddress())).to.equal((fee * FEE_SPLIT.insurance) / 10_000n);
+      expect(await token.balanceOf(settlementAddr)).to.equal(0n);
+    });
+
+    it("a paused Settlement does not block minting, and the fee is still taken", async () => {
+      const { mintingEngine, oracleRouter, vppA, token, settlement, governor, deployer, treasury } =
+        await loadFixture(deployFullSystem);
+      const pauser = (await settlement.hasRole(await settlement.PAUSER_ROLE(), await governor.getAddress()))
+        ? governor
+        : deployer;
+      await settlement.connect(pauser).pause();
+
+      const vppAddr = await vppA.getAddress();
+      await mintAs(mintingEngine, await oracleRouter.getAddress(), ethers.id("fee-device-paused"), vppAddr, 100n);
+
+      expect(await token.balanceOf(vppAddr)).to.equal(netOfMintFee(100n * ONE_TOKEN));
+      expect(await token.balanceOf(await treasury.getAddress())).to.be.gt(0n);
+    });
+
+    it("only MintingEngine can trigger minting-fee distribution", async () => {
+      const { settlement, alice } = await loadFixture(deployFullSystem);
+      await expect(settlement.connect(alice).distributeMintingFee(1n)).to.be.revertedWithCustomError(
+        settlement,
+        "NotMintingEngine",
+      );
+    });
+  });
+
   describe("Proof-of-Wear enforcement (D-7)", () => {
     const CAPACITY = 100n; // 100 kWh battery — realistic residential pack.
     const DEVICE = () => ethers.id("pow-device");
@@ -422,7 +477,7 @@ describe("MintingEngine", () => {
       await mintAsWithCycles(mintingEngine, oracleAddr, deviceId, vppAddr, 80n, 3, CAPACITY);
 
       // Both packets minted; total balance = 130 tokens (era 0, 1:1 rate).
-      expect(await token.balanceOf(vppAddr)).to.equal(130n * ONE_TOKEN);
+      expect(await token.balanceOf(vppAddr)).to.equal(netOfMintFee(50n * ONE_TOKEN) + netOfMintFee(80n * ONE_TOKEN));
       const state = await mintingEngine.getDeviceCycleState(deviceId);
       expect(state.lastCumulativeCycles).to.equal(3);
       expect(state.storageCapacity).to.equal(CAPACITY * ONE_TOKEN);

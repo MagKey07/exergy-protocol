@@ -87,9 +87,8 @@ You will interact with three contracts during integration:
 A single Ethereum wallet that will:
 
 - Co-sign every measurement packet from your fleet.
-- Be the recipient of every minted `$XRGY` token.
+- Be the recipient of every minted `$XRGY` token (net of the 1% minting fee, which is split off at mint time).
 - Hold `CHAINLINK_RELAYER_ROLE` on OracleRouter (granted by protocol admin during onboarding — see §4).
-- Approve Settlement to skim the 1% mint fee from incoming tokens.
 
 Generate this wallet **once** and protect it. In production, this is an HSM key or a cloud KMS key. In testnet you can use any 32-byte private key. The address must be stable across your fleet — every device's `MeasurementPacket` will be co-signed by this single VPP key.
 
@@ -209,16 +208,9 @@ The choice is made at the moment you call `registerDevice` for each device. Ther
 
 **For Phase 0 pilots we recommend starting with the single corporate wallet model** — fewer moving parts, faster onboarding, validates the protocol mechanics (Proof-of-Charge, market, halving) before introducing wallet-management UX complexity. Phase 1+ Chainlink deployment, better UX tooling, and audit make per-participant registration ergonomic if desired.
 
-### Step 4: Approve Settlement to take the 1% fee
+### Step 4: Nothing to approve for the minting fee
 
-Once per VPP cloud wallet, on the `XRGYToken` contract:
-
-```typescript
-const MAX = (1n << 256n) - 1n; // ethers.MaxUint256
-await xrgyToken.connect(vppCloudWallet).approve(SETTLEMENT_ADDRESS, MAX);
-```
-
-This authorizes Settlement to pull the 1% protocol fee from your VPP cloud's `$XRGY` balance immediately after each mint. Without this approval, the fee call inside `MintingEngine` is wrapped in a `try/catch` on Phase 0 and silently no-ops — your mint succeeds but the fee is never collected. **On mainnet this becomes a hard revert.** Set the approval before your first mint.
+The 1% minting fee is split off inside the mint itself: `MintingEngine` mints 99% to your VPP cloud wallet and 1% to Settlement, which distributes it (Treasury 40 / Team 20 / Ecosystem 25 / Insurance 15) in the same transaction. No approval from your wallet is involved. (An approval to Settlement is needed only later, when your participants pay for energy with `settleEnergy` / `crossVPPSettle` — that fee is paid on top of the amount sent.)
 
 ### Step 5: Submit your first measurement packet
 
@@ -443,13 +435,9 @@ const tx = await oracleRouter.submitMeasurement(
 const receipt = await tx.wait();
 ```
 
-### 7.3 Why `gasLimit: 600_000n` is mandatory
+### 7.3 Gas limit
 
-`MintingEngine.commitVerifiedEnergy` calls `Settlement.collectMintingFee` inside a Solidity `try/catch`. Under [EIP-150](https://eips.ethereum.org/EIPS/eip-150), only 63/64 of the remaining gas is forwarded to the inner call. If the outer `estimateGas` is tight, the 63/64 budget runs out inside `Settlement` — the inner call OOG-reverts, and `try/catch` silently swallows the failure. Result: your mint succeeds but the 1% fee is never collected.
-
-Passing an explicit `gasLimit: 600_000n` (or higher) gives the inner call enough budget. This is a Phase 0 workaround. In Phase 1 the `try/catch` is replaced with a hard requirement that returns success/failure properly.
-
-If you let your library auto-estimate gas without padding, expect intermittent silent fee skips on testnet.
+A submission verifies two signatures, mints, and distributes the minting fee to four recipients in one transaction. Auto-estimated gas works; passing an explicit `gasLimit: 600_000n` leaves comfortable headroom. The fee step no longer sits behind a `try/catch`, so it cannot be silently skipped: either the whole mint succeeds with its fee, or the transaction reverts.
 
 ### 7.4 What a successful submission emits
 
@@ -457,7 +445,7 @@ In one transaction, three events fire that you should index:
 
 1. **`OracleRouter.MeasurementVerified(deviceId, vppAddress, kwhAmount, timestamp, epoch)`** — packet passed dual-sig verification. Useful for UI feedback ("packet accepted").
 2. **`MintingEngine.EnergyMinted(deviceId, vppAddress, kwhAmount, tokensMinted, epoch, era)`** — tokens were minted to your VPP cloud wallet. `tokensMinted = (kwhAmount * rate) / 1e18`. In Era 0, `tokensMinted == kwhAmount`.
-3. **`XRGYToken.Transfer(0x0, vppAddress, tokensMinted)`** — the standard ERC-20 mint event. Your wallet's `$XRGY` balance is now higher by `tokensMinted - fee`.
+3. **`XRGYToken.Transfer(0x0, vppAddress, tokensMinted - fee)`** — the standard ERC-20 mint event for your share. A second mint `Transfer(0x0, Settlement, fee)` and `Settlement.FeesDistributed(...)` follow for the 1% minting fee (`fee = tokensMinted * mintingFeeBps / 10_000`, 100 bps by default).
 
 Optionally a `HalvingTriggered(newEra, newRateNumerator, totalSupplyAtHalving)` event fires if your mint crosses an era boundary.
 
@@ -544,7 +532,7 @@ You don't call Settlement during minting, but be aware:
 
 | Revert | Trigger |
 |---|---|
-| `NotMintingEngine()` | Calling `collectMintingFee` directly. |
+| `NotMintingEngine()` | Calling `distributeMintingFee` directly. |
 | `AmountZero()` | `settleEnergy` or `crossVPPSettle` with zero `tokenAmount`. |
 | `FeeBpsTooHigh(uint256)` | Admin tried to set fee > 10%. Capped at 1000 bps. |
 
@@ -566,10 +554,10 @@ The protocol is fully working on Arbitrum Sepolia. It is not yet on mainnet. Her
 - **Now:** `registerDevice` is `DEVICE_REGISTRAR_ROLE`-gated, currently admin-only. VPPs submit a list of devices to the protocol team for batch registration.
 - **Production:** self-service registration via signed off-chain claims, batched on-chain by the VPP itself. Roadmap Q3-Q4 2026.
 
-### 10.3 Soft fee collection
+### 10.3 Minting fee
 
-- **Now:** `MintingEngine` wraps `Settlement.collectMintingFee` in `try/catch`. If your VPP cloud has not approved Settlement, the fee is silently skipped and your mint succeeds.
-- **Production:** the `try/catch` is replaced with a hard requirement. A mint that cannot collect its fee reverts. Your VPP cloud must approve Settlement before mainnet.
+- **Since 17.10.2026:** the 1% minting fee is split off at mint time (99% to the VPP, 1% distributed by Settlement), with no approval and no `try/catch`. Earlier testnet mints pulled the fee back with `transferFrom` and skipped it silently when the VPP had not approved Settlement; those skipped fees were not recovered.
+- **Production:** unchanged — the same split.
 
 ### 10.4 Single deployer holds all admin roles
 

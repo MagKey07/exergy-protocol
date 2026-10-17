@@ -88,6 +88,17 @@ function splitFee(fee: bigint): {
   return { treasury, team, ecosystem, insurance };
 }
 
+/** Fee-recipient balances, so tests can assert on what one settlement added
+ *  (seeding notes by minting already pays the 1% minting fee to them). */
+async function recipientBalances(sys: Awaited<ReturnType<typeof deployFullSystem>>) {
+  return {
+    treasury: await sys.token.balanceOf(await sys.treasury.getAddress()),
+    team: await sys.token.balanceOf(await sys.team.getAddress()),
+    ecosystem: await sys.token.balanceOf(await sys.ecosystem.getAddress()),
+    insurance: await sys.token.balanceOf(await sys.insurance.getAddress()),
+  };
+}
+
 describe("Settlement", () => {
   describe("settleEnergy — intra-VPP", () => {
     it("transfers the full tokenAmount to provider; pulls fee on top to recipients", async () => {
@@ -106,6 +117,8 @@ describe("Settlement", () => {
 
       // Approve principal + fee — fee is on top, not from the principal.
       await token.connect(alice).approve(await settlement.getAddress(), principal + fee);
+      const aliceBefore = await token.balanceOf(aliceAddr);
+      const before = await recipientBalances(sys);
 
       // kwhConsumed = 0 to keep this test scoped to fee mechanics.
       await settlement.connect(alice).settleEnergy(bobAddr, principal, principal);
@@ -113,14 +126,14 @@ describe("Settlement", () => {
       // Provider Bob receives the FULL principal, not net-of-fee.
       expect(await token.balanceOf(bobAddr)).to.equal(principal);
 
-      // Alice paid principal + fee out of her 1100-token balance.
-      expect(await token.balanceOf(aliceAddr)).to.equal(1100n * ONE_TOKEN - principal - fee);
+      // Alice paid principal + fee.
+      expect(await token.balanceOf(aliceAddr)).to.equal(aliceBefore - principal - fee);
 
       // Fee distributed.
-      expect(await token.balanceOf(await treasury.getAddress())).to.equal(split.treasury);
-      expect(await token.balanceOf(await team.getAddress())).to.equal(split.team);
-      expect(await token.balanceOf(await ecosystem.getAddress())).to.equal(split.ecosystem);
-      expect(await token.balanceOf(await insurance.getAddress())).to.equal(split.insurance);
+      expect((await token.balanceOf(await treasury.getAddress())) - before.treasury).to.equal(split.treasury);
+      expect((await token.balanceOf(await team.getAddress())) - before.team).to.equal(split.team);
+      expect((await token.balanceOf(await ecosystem.getAddress())) - before.ecosystem).to.equal(split.ecosystem);
+      expect((await token.balanceOf(await insurance.getAddress())) - before.insurance).to.equal(split.insurance);
 
       // Settlement contract holds nothing after distribution.
       expect(await token.balanceOf(await settlement.getAddress())).to.equal(0n);
@@ -226,15 +239,16 @@ describe("Settlement", () => {
       const counterpartyVPPId = ethers.id("vpp-london-east");
 
       await token.connect(alice).approve(await settlement.getAddress(), principal + fee);
+      const before = await recipientBalances(sys);
       await settlement
         .connect(alice)
         .crossVPPSettle(await bob.getAddress(), counterpartyVPPId, principal);
 
       expect(await token.balanceOf(await bob.getAddress())).to.equal(principal);
-      expect(await token.balanceOf(await treasury.getAddress())).to.equal(split.treasury);
-      expect(await token.balanceOf(await team.getAddress())).to.equal(split.team);
-      expect(await token.balanceOf(await ecosystem.getAddress())).to.equal(split.ecosystem);
-      expect(await token.balanceOf(await insurance.getAddress())).to.equal(split.insurance);
+      expect((await token.balanceOf(await treasury.getAddress())) - before.treasury).to.equal(split.treasury);
+      expect((await token.balanceOf(await team.getAddress())) - before.team).to.equal(split.team);
+      expect((await token.balanceOf(await ecosystem.getAddress())) - before.ecosystem).to.equal(split.ecosystem);
+      expect((await token.balanceOf(await insurance.getAddress())) - before.insurance).to.equal(split.insurance);
     });
 
     it("emits CrossVPPSettled with payer, receiver, counterpartyVPPId, tokensTransferred, feePaid", async () => {
@@ -312,12 +326,13 @@ describe("Settlement", () => {
       const fee = (principal * SETTLEMENT_FEE_BPS) / BPS_DENOMINATOR;
 
       await token.connect(alice).approve(await settlement.getAddress(), principal + fee);
+      const before = await recipientBalances(sys);
       await settlement.connect(alice).settleEnergy(await bob.getAddress(), principal, principal);
 
-      const treasuryBal = await token.balanceOf(await treasury.getAddress());
-      const teamBal = await token.balanceOf(await team.getAddress());
-      const ecosystemBal = await token.balanceOf(await ecosystem.getAddress());
-      const insuranceBal = await token.balanceOf(await insurance.getAddress());
+      const treasuryBal = (await token.balanceOf(await treasury.getAddress())) - before.treasury;
+      const teamBal = (await token.balanceOf(await team.getAddress())) - before.team;
+      const ecosystemBal = (await token.balanceOf(await ecosystem.getAddress())) - before.ecosystem;
+      const insuranceBal = (await token.balanceOf(await insurance.getAddress())) - before.insurance;
 
       // Treasury / Team / Ecosystem use floor bps math; Insurance gets the remainder.
       expect(treasuryBal).to.equal((fee * FEE_SPLIT.treasury) / BPS_DENOMINATOR);

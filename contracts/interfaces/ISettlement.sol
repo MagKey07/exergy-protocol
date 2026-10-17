@@ -12,9 +12,10 @@ pragma solidity ^0.8.24;
  * tracks totalVerifiedEnergyInStorage moving with physical reality.
  *
  * Fee structure (per Technical_Blueprint.md §2.4):
- *  - Minting fee: 1% of newly-minted tokens, taken inside Settlement only
- *    when invoked from a mint flow. (MVP: minting fee is collected directly
- *    by MintingEngine via this contract's `collectMintingFee` hook — see notes.)
+ *  - Minting fee: 1% of newly-minted tokens. MintingEngine splits every mint
+ *    itself — net to the VPP, the fee to this contract — and calls
+ *    `distributeMintingFee`. No approval from the VPP is involved, so the fee
+ *    cannot be silently skipped.
  *  - Settlement fee: 0.25% of every settle transfer.
  *  - Distribution: Treasury 40%, Team 20%, Ecosystem 25%, Insurance 15%.
  */
@@ -102,14 +103,12 @@ interface ISettlement {
     function crossVPPSettle(address receiver, bytes32 counterpartyVPPId, uint256 tokenAmount) external;
 
     /**
-     * @notice Hook used by MintingEngine to skim the 1% minting fee at mint time.
-     * @dev Called immediately after MintingEngine mints to a VPP recipient.
-     *      Settlement transferFroms the fee out of the recipient and distributes it.
-     * @param mintRecipient The VPP that just received freshly-minted tokens.
-     * @param grossMintedAmount The full amount minted (fee is calculated from this).
-     * @return feeTaken Amount actually pulled from the recipient and distributed.
+     * @notice Distribute a minting fee that MintingEngine has just minted into this contract.
+     * @dev MintingEngine mints `feeAmount` to Settlement as part of the mint itself,
+     *      then calls this to route it to the fee recipients.
+     * @param feeAmount The fee portion of the mint, already held by Settlement.
      */
-    function collectMintingFee(address mintRecipient, uint256 grossMintedAmount) external returns (uint256 feeTaken);
+    function distributeMintingFee(uint256 feeAmount) external;
 
     /// @notice Update fee distribution recipients (admin).
     function setFeeRecipients(FeeRecipients calldata recipients) external;

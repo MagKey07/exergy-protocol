@@ -101,6 +101,9 @@ contract MintingEngine is
      */
     uint256 public constant MAX_CYCLES_PER_EPOCH = 2;
 
+    /// @notice Basis-point denominator for the minting fee read from Settlement.
+    uint256 private constant FEE_BPS_DENOMINATOR = 10_000;
+
     // ---------------------------------------------------------------------
     // Storage
     // ---------------------------------------------------------------------
@@ -283,26 +286,23 @@ contract MintingEngine is
         _syncDeviceStoredEnergy(deviceId, storageCapacity, chargeLevelPercent);
         totalTokensMinted += tokensMinted;
 
-        // Mint tokens to the VPP recipient.
-        token.mint(vppAddress, tokensMinted);
+        // Split the mint: the minting fee goes to Settlement for distribution,
+        // the rest to the VPP. Taken at mint time, so no approval is needed and
+        // the fee cannot be skipped. Total supply is the same either way.
+        uint256 fee;
+        if (address(settlement) != address(0)) {
+            fee = (tokensMinted * settlement.mintingFeeBps()) / FEE_BPS_DENOMINATOR;
+        }
+        token.mint(vppAddress, tokensMinted - fee);
 
         emit EnergyMinted(deviceId, vppAddress, kwhAmount, tokensMinted, epoch, era);
 
         // Lazy halving check after mint. May advance multiple eras at once.
         _checkAndAdvanceHalving();
 
-        // Skim minting fee via Settlement, if wired.
-        // The fee is pulled from `vppAddress` via transferFrom; VPP must approve Settlement once.
-        if (address(settlement) != address(0)) {
-            // Best-effort skim. We do NOT revert if fee collection fails on testnet
-            // (e.g. recipient hasn't approved yet) — minting must always succeed for
-            // verified energy; the fee is a downstream concern. Production may
-            // tighten this to a hard requirement.
-            try settlement.collectMintingFee(vppAddress, tokensMinted) returns (uint256) {
-                // ok
-            } catch {
-                // swallow on testnet; off-chain monitor flags missed fees
-            }
+        if (fee > 0) {
+            token.mint(address(settlement), fee);
+            settlement.distributeMintingFee(fee);
         }
     }
 

@@ -21,6 +21,7 @@ import {
   BPS_DENOMINATOR,
   FEE_SPLIT,
   ONE_TOKEN,
+  netOfMintFee,
   SETTLEMENT_FEE_BPS,
   deployFullSystem,
 } from "../helpers/fixtures";
@@ -67,7 +68,8 @@ describe("Integration: end-to-end happy path", () => {
     await expect(oracleRouter.submitMeasurement(packet, devSig, vppSig)).to.emit(mintingEngine, "EnergyMinted");
 
     // ----- Step 4: minting + state checks ---------------------------------
-    expect(await token.balanceOf(vppCloud.address)).to.equal(500n * ONE_TOKEN);
+    expect(await token.balanceOf(vppCloud.address)).to.equal(netOfMintFee(500n * ONE_TOKEN));
+    expect(await token.totalSupply()).to.equal(500n * ONE_TOKEN); // the fee is part of the mint, not extra
     expect(await mintingEngine.totalVerifiedEnergyInStorage()).to.equal(500n * KWH);
     expect(await mintingEngine.getFloatingIndex()).to.equal(ONE_TOKEN);
 
@@ -81,12 +83,15 @@ describe("Integration: end-to-end happy path", () => {
     const principal = 50n * ONE_TOKEN;
     const fee = (principal * SETTLEMENT_FEE_BPS) / BPS_DENOMINATOR;
     await token.connect(alice).approve(await settlement.getAddress(), principal + fee);
+    const treasuryBefore = await token.balanceOf(await treasury.getAddress());
+    const teamBefore = await token.balanceOf(await team.getAddress());
+    const ecosystemBefore = await token.balanceOf(await ecosystem.getAddress());
     await settlement.connect(alice).settleEnergy(await bob.getAddress(), principal, 50n * KWH); // index 1.0 → 50 kWh for 50 notes
 
     expect(await token.balanceOf(await bob.getAddress())).to.equal(principal);
-    expect(await token.balanceOf(await treasury.getAddress())).to.equal((fee * FEE_SPLIT.treasury) / BPS_DENOMINATOR);
-    expect(await token.balanceOf(await team.getAddress())).to.equal((fee * FEE_SPLIT.team) / BPS_DENOMINATOR);
-    expect(await token.balanceOf(await ecosystem.getAddress())).to.equal((fee * FEE_SPLIT.ecosystem) / BPS_DENOMINATOR);
+    expect((await token.balanceOf(await treasury.getAddress())) - treasuryBefore).to.equal((fee * FEE_SPLIT.treasury) / BPS_DENOMINATOR);
+    expect((await token.balanceOf(await team.getAddress())) - teamBefore).to.equal((fee * FEE_SPLIT.team) / BPS_DENOMINATOR);
+    expect((await token.balanceOf(await ecosystem.getAddress())) - ecosystemBefore).to.equal((fee * FEE_SPLIT.ecosystem) / BPS_DENOMINATOR);
 
     // ----- Step 7: a note travels to another VPP — no wire needed ---------
     const moved = 10n * ONE_TOKEN;

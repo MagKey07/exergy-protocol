@@ -105,7 +105,7 @@ export function Overview(): JSX.Element {
           value={era.era !== undefined ? Number(era.era).toString() : "—"}
           hint={
             era.rate !== undefined
-              ? `Mint rate: ${formatEraRate(era.rate)} notes / kWh`
+              ? `Mint rate: ${formatEraRate(era.rate)} per kWh`
               : "Loading rate…"
           }
         />
@@ -160,14 +160,14 @@ export function Overview(): JSX.Element {
                 {mintsLoading && mints.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={4} className="text-center text-fg-subtle py-8">
-                      Scanning the chain for mint events. Without an indexer this can take a long time or time out — the range from our deploy block is now tens of millions of blocks. Totals above are unaffected: they are read directly from the contract.
+                      Loading mint history…
                     </TableCell>
                   </TableRow>
                 )}
                 {!mintsLoading && mints.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={4} className="text-center text-fg-subtle py-8">
-                      Mint history is not indexed yet — the contract emits events but enumerating them needs an indexer (Phase 1). Totals above are read directly from the contract; every individual mint is visible on Arbiscan.
+                      Mint history could not be loaded right now. Totals above are read directly from the contract; every mint is visible on Arbiscan.
                     </TableCell>
                   </TableRow>
                 )}
@@ -203,7 +203,7 @@ export function Overview(): JSX.Element {
                 {activeVPPs.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={3} className="text-center text-fg-subtle py-8">
-                      Per-VPP roll-up is not indexed yet (Phase 1). Registrations live on-chain in a mapping, which cannot be listed without an indexer — individual records are readable on Arbiscan.
+                      {mintsLoading ? "Loading…" : "No mints recorded yet."}
                     </TableCell>
                   </TableRow>
                 )}
