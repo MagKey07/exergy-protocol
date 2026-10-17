@@ -64,6 +64,12 @@ interface IOracleRouter {
     /// (typically the deployed Chainlink External Adapter address).
     event ChainlinkRelayerSet(address indexed relayer);
 
+    /// @notice A device was bound to its energy source (see `sourceType` in MeasurementPacket).
+    event DeviceSourceSet(bytes32 indexed deviceId, uint8 sourceType);
+
+    /// @notice An energy source was added to or removed from the list whose stored energy may mint notes.
+    event AllowedSourceSet(uint8 indexed sourceType, bool allowed);
+
     /// @notice Caller is not allowed to register devices.
     error NotDeviceRegistrar();
     /// @notice Caller is not the registered Chainlink relayer.
@@ -86,6 +92,12 @@ interface IOracleRouter {
     error ZeroAddress();
     /// @notice MintingEngine has already been set.
     error MintingEngineAlreadySet();
+
+    /// @notice A packet carrying new energy came from a source that is not on the allowed list.
+    error SourceNotAllowed(uint8 sourceType);
+
+    /// @notice A packet's source differs from the source the device was registered with.
+    error SourceMismatch(bytes32 deviceId, uint8 registeredSource, uint8 reportedSource);
 
     /**
      * @notice Submit a verified measurement to be forwarded to the MintingEngine.

@@ -88,8 +88,17 @@ contract OracleRouter is
     /// @notice Replay protection — once a packet hash is consumed it cannot be reused.
     mapping(bytes32 => bool) private _processed;
 
+    /// @notice deviceId → registered energy source + 1 (0 = not bound yet).
+    /// @dev Appended in the source-check upgrade; takes one slot from `__gap`.
+    mapping(bytes32 => uint8) private _deviceSourcePlusOne;
+
+    /// @notice Energy sources whose stored energy may mint notes. A list, not code:
+    ///         adding a new source (e.g. green hydrogen) is one admin call, not a redeploy.
+    /// @dev Appended in the source-check upgrade; takes one slot from `__gap`.
+    mapping(uint8 => bool) private _allowedSource;
+
     /// @dev Reserved storage gap for upgradeable layout safety.
-    uint256[40] private __gap;
+    uint256[38] private __gap;
 
     // ---------------------------------------------------------------------
     // Initializer
@@ -174,6 +183,21 @@ contract OracleRouter is
         emit DeviceActiveStatusChanged(deviceId, active);
     }
 
+    /// @notice Bind a device to its energy source. Once bound, packets carrying new
+    ///         energy must report the same source.
+    function setDeviceSource(bytes32 deviceId, uint8 sourceType) external onlyRole(DEVICE_REGISTRAR_ROLE) {
+        if (_devices[deviceId].vppAddress == address(0)) revert DeviceNotRegistered(deviceId);
+        _deviceSourcePlusOne[deviceId] = sourceType + 1;
+        emit DeviceSourceSet(deviceId, sourceType);
+    }
+
+    /// @notice Add or remove an energy source from the list whose stored energy may mint.
+    ///         Grid power is not a source code at all; "other" (3) stays off the list.
+    function setAllowedSource(uint8 sourceType, bool allowed) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _allowedSource[sourceType] = allowed;
+        emit AllowedSourceSet(sourceType, allowed);
+    }
+
     // ---------------------------------------------------------------------
     // Submission
     // ---------------------------------------------------------------------
@@ -195,6 +219,17 @@ contract OracleRouter is
         DeviceRecord memory rec = _devices[packet.deviceId];
         if (rec.vppAddress == address(0)) revert DeviceNotRegistered(packet.deviceId);
         if (!rec.active) revert DeviceInactive(packet.deviceId);
+
+        // Source check — only for packets that carry NEW energy (they mint). A pure
+        // state-of-charge report must always get through, or a battery on a source
+        // later taken off the list could never report its discharge.
+        if (packet.kwhAmount > 0) {
+            if (!_allowedSource[packet.sourceType]) revert SourceNotAllowed(packet.sourceType);
+            uint8 bound = _deviceSourcePlusOne[packet.deviceId];
+            if (bound != 0 && packet.sourceType != bound - 1) {
+                revert SourceMismatch(packet.deviceId, bound - 1, packet.sourceType);
+            }
+        }
 
         // Time window check.
         if (packet.timestamp > block.timestamp + MAX_FUTURE_DRIFT_SECONDS) revert TimestampOutOfWindow();
@@ -261,6 +296,17 @@ contract OracleRouter is
     /// @inheritdoc IOracleRouter
     function getDevice(bytes32 deviceId) external view override returns (DeviceRecord memory) {
         return _devices[deviceId];
+    }
+
+    /// @notice The source a device is bound to; `bound` is false until `setDeviceSource`.
+    function deviceSource(bytes32 deviceId) external view returns (bool bound, uint8 sourceType) {
+        uint8 v = _deviceSourcePlusOne[deviceId];
+        return (v != 0, v == 0 ? 0 : v - 1);
+    }
+
+    /// @notice Whether stored energy from this source may mint notes.
+    function isSourceAllowed(uint8 sourceType) external view returns (bool) {
+        return _allowedSource[sourceType];
     }
 
     /// @inheritdoc IOracleRouter

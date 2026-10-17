@@ -160,6 +160,10 @@ interface IMintingEngine {
      *         Discharge, self-use and self-discharge reach the pool through this report
      *         instead of waiting for the device's next charge.
      */
+    /// @notice A newly connected battery placed the charge it already held into the
+    ///         network stock. No notes are minted for it: notes come only from new charging.
+    event InitialChargeRegistered(bytes32 indexed deviceId, address indexed vppAddress, uint256 heldKwh, uint256 totalVerifiedEnergyInStorage);
+
     event StateOfChargeReported(
         bytes32 indexed deviceId,
         address indexed vppAddress,

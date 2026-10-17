@@ -97,6 +97,45 @@ describe("OracleRouter", () => {
       return { ...sys, device, vppCloud, deviceId };
     }
 
+    it("REJECTS new energy from a source that is not on the allowed list (\"other\" = 3)", async () => {
+      const { oracleRouter, device, vppCloud, deviceId } = await setupRegisteredDevice();
+      const packet = makePacket({ deviceId, kwhAmount: 100n, sourceType: 3 });
+      const devSig = await signDevice(packet, device);
+      const vppSig = await signVpp(packet, devSig, vppCloud);
+      await expect(oracleRouter.submitMeasurement(packet, devSig, vppSig))
+        .to.be.revertedWithCustomError(oracleRouter, "SourceNotAllowed")
+        .withArgs(3);
+    });
+
+    it("REJECTS new energy whose source differs from the device's registered source", async () => {
+      const { oracleRouter, governor, device, vppCloud, deviceId } = await setupRegisteredDevice();
+      await oracleRouter.connect(governor).setDeviceSource(deviceId, 0); // solar
+      const packet = makePacket({ deviceId, kwhAmount: 100n, sourceType: 1 }); // claims wind
+      const devSig = await signDevice(packet, device);
+      const vppSig = await signVpp(packet, devSig, vppCloud);
+      await expect(oracleRouter.submitMeasurement(packet, devSig, vppSig))
+        .to.be.revertedWithCustomError(oracleRouter, "SourceMismatch")
+        .withArgs(deviceId, 0, 1);
+    });
+
+    it("a new source joins by one admin call, no redeploy", async () => {
+      const { oracleRouter, governor, device, vppCloud, deviceId } = await setupRegisteredDevice();
+      const HYDROGEN = 4;
+      const packet = makePacket({ deviceId, kwhAmount: 100n, sourceType: HYDROGEN });
+      const devSig = await signDevice(packet, device);
+      const vppSig = await signVpp(packet, devSig, vppCloud);
+      await oracleRouter.connect(governor).setAllowedSource(HYDROGEN, true);
+      await expect(oracleRouter.submitMeasurement(packet, devSig, vppSig)).to.emit(oracleRouter, "MeasurementVerified");
+    });
+
+    it("a pure state-of-charge report passes whatever its source — discharge must always reach the stock", async () => {
+      const { oracleRouter, device, vppCloud, deviceId } = await setupRegisteredDevice();
+      const packet = makePacket({ deviceId, kwhAmount: 0n, sourceType: 3, chargeLevelPercent: 40 });
+      const devSig = await signDevice(packet, device);
+      const vppSig = await signVpp(packet, devSig, vppCloud);
+      await expect(oracleRouter.submitMeasurement(packet, devSig, vppSig)).to.emit(oracleRouter, "MeasurementVerified");
+    });
+
     it("ACCEPTS a packet signed by both device + VPP cloud", async () => {
       const { oracleRouter, device, vppCloud, deviceId } = await setupRegisteredDevice();
       const packet = makePacket({ deviceId, kwhAmount: 100n });

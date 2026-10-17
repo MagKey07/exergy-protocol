@@ -221,6 +221,8 @@ contract MintingEngine is
         if (vppAddress == address(0)) revert ZeroAddress();
 
         uint256 epoch = currentEpoch();
+        // Read before Proof-of-Wear marks the device as seen.
+        bool firstPacket = !_deviceCycleState[deviceId].initialized;
 
         // -------- PROOF-OF-WEAR ENFORCEMENT (Blueprint §5.6) --------
         // CORE_THESIS: this is the native Sybil resistance — the on-chain check that
@@ -246,9 +248,14 @@ contract MintingEngine is
             if (chargeLevelPercent > 100) revert InvalidChargeLevel(chargeLevelPercent);
             uint256 attestedHeld = (storageCapacity * uint256(chargeLevelPercent)) / 100;
             uint256 previouslyHeld = _deviceCycleState[deviceId].lastReportedEnergy;
-            if (attestedHeld > previouslyHeld) revert ChargeRiseWithoutEnergy(previouslyHeld, attestedHeld);
+            // One exception: the very first packet of a newly connected battery may bring
+            // the charge it already holds into the stock — without minting. Notes come only
+            // from new charging; the existing charge simply joins the backing.
+            bool initialCharge = firstPacket && previouslyHeld == 0 && attestedHeld > 0;
+            if (attestedHeld > previouslyHeld && !initialCharge) revert ChargeRiseWithoutEnergy(previouslyHeld, attestedHeld);
             _syncDeviceStoredEnergy(deviceId, storageCapacity, chargeLevelPercent);
-            emit StateOfChargeReported(deviceId, vppAddress, attestedHeld, totalVerifiedEnergyInStorage);
+            if (initialCharge) emit InitialChargeRegistered(deviceId, vppAddress, attestedHeld, totalVerifiedEnergyInStorage);
+            else emit StateOfChargeReported(deviceId, vppAddress, attestedHeld, totalVerifiedEnergyInStorage);
             return 0;
         }
 

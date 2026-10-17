@@ -119,9 +119,23 @@ describe("Pool accounting — pool tracks what devices currently hold", () => {
     expect(await engine.totalVerifiedEnergyInStorage()).to.equal((CAPACITY * 40n) / 100n);
   });
 
-  it("a brand-new device cannot claim stored energy without minting through the wear checks", async () => {
-    await expect(report(50, 100, 0n)).to.be.revertedWithCustomError(engine, "ChargeRiseWithoutEnergy");
-    expect(await engine.totalVerifiedEnergyInStorage()).to.equal(0n);
+  it("a newly connected battery brings the charge it already holds into the stock — once, with no notes", async () => {
+    // Decision 16-17.10: notes come only from new charging, but the charge a battery
+    // holds when it joins becomes part of the network's backing straight away.
+    await expect(report(50, 100, 0n)).to.emit(engine, "InitialChargeRegistered");
+    expect(await engine.totalVerifiedEnergyInStorage()).to.equal((CAPACITY * 50n) / 100n);
+    expect(await engine.totalTokensMinted()).to.equal(0n);
+  });
+
+  it("after its first packet, a battery still cannot raise its charge without new energy", async () => {
+    await report(50, 100, 0n);
+    await expect(report(80, 100, 0n)).to.be.revertedWithCustomError(engine, "ChargeRiseWithoutEnergy");
+    expect(await engine.totalVerifiedEnergyInStorage()).to.equal((CAPACITY * 50n) / 100n);
+  });
+
+  it("the initial-charge exception does not apply to a battery that has already minted", async () => {
+    await report(0, 100, kwh("1"));
+    await expect(report(60, 100, 0n)).to.be.revertedWithCustomError(engine, "ChargeRiseWithoutEnergy");
   });
 
   it("LEAK 3 — capacity fade: a smaller battery cannot back the same energy", async () => {
