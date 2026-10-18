@@ -31,8 +31,7 @@ import { useFloatingIndex } from "@/hooks/useFloatingIndex";
  *     VPP address entered in the form.
  *
  * Both flows apply the protocol settlement fee (`settlementFeeBps`,
- * default 25 = 0.25%, distributed Treasury 40% / Team 20% / Ecosystem 25% /
- * Insurance 15% per Technical_Blueprint §2.4). The fee is paid ON TOP of the
+ * default 25 = 0.25%, 100% to the Key Energy treasury; corridor 10–50 bps). The fee is paid ON TOP of the
  * principal: the recipient receives the full `tokenAmount` and the payer pays
  * `tokenAmount + fee`. Approve `tokenAmount + fee` to Settlement before submit.
  *
@@ -79,7 +78,7 @@ export function Settlement(): JSX.Element {
       <PageHeader
         eyebrow="Settlement"
         title="Settle in $XRGY"
-        subtitle="Pay participants in the energy they helped store. Protocol fee 0.25% (paid on top of the principal) — Treasury 40% / Team 20% / Ecosystem 25% / Insurance 15%."
+        subtitle="Pay participants in the energy they helped store. Protocol fee 0.25%, paid on top of the principal, to the Key Energy treasury."
       />
 
       <ContractsBanner />
