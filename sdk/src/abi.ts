@@ -62,7 +62,6 @@ export const XRGY_TOKEN_ABI = [
 ] as const;
 
 export const SETTLEMENT_ABI = [
-  "function mintingFeeBps() external view returns (uint256)",
   "function settlementFeeBps() external view returns (uint256)",
   // Energy for a note, inside one VPP perimeter, at the floating index:
   // tokenAmount = kwhConsumed / floatingIndex (±1%). Both 18-decimal.
@@ -76,7 +75,7 @@ export const SETTLEMENT_ABI = [
   "event EnergySettled(address indexed payer, address indexed provider, uint256 tokensTransferred, uint256 kwhConsumed, uint256 feePaid)",
   "event CrossVPPSettled(address indexed payer, address indexed receiver, bytes32 indexed counterpartyVPPId, uint256 tokensTransferred, uint256 feePaid)",
   "event ParticipantVPPSet(address indexed participant, bytes32 indexed vppId)",
-  "event FeesDistributed(uint256 treasuryAmt, uint256 teamAmt, uint256 ecosystemAmt, uint256 insuranceAmt)",
+  "event SettlementFeePaid(address indexed treasury, uint256 amount)",
 
   "error OutsidePerimeter(address payer, address provider)",
   "error OffIndexRate(uint256 tokensPaid, uint256 tokensAtIndex)",

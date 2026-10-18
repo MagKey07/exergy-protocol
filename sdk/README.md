@@ -134,7 +134,7 @@ Narrow ABI fragments covering only the functions and events most integrations ne
 
 ## Why explicit gas limit
 
-A submission verifies two signatures, mints, and distributes the 1% minting fee to four recipients in one transaction. `DEFAULT_SUBMIT_GAS_LIMIT = 600_000n` leaves comfortable headroom over the observed cost (~430k) on Arbitrum Sepolia. The minting fee is split off inside the mint itself (since 17.10.2026), so it can no longer be skipped silently: the mint either succeeds with its fee or reverts.
+A submission verifies two signatures and mints — splitting the mint between the VPP, the Key Energy treasury and the insurance reserve — in one transaction. `DEFAULT_SUBMIT_GAS_LIMIT = 600_000n` leaves comfortable headroom over the observed cost (~430k) on Arbitrum Sepolia. The minting fee is split off inside the mint itself (since 17.10.2026), so it can no longer be skipped silently: the mint either succeeds with its fee or reverts.
 
 ---
 

@@ -275,13 +275,6 @@ export const settlementAbi = [
   },
   {
     type: "function",
-    name: "mintingFeeBps",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-  {
-    type: "function",
     name: "feeRecipients",
     stateMutability: "view",
     inputs: [],
@@ -345,12 +338,10 @@ export const settlementAbi = [
   },
   {
     type: "event",
-    name: "FeesDistributed",
+    name: "SettlementFeePaid",
     inputs: [
-      { name: "treasuryAmt", type: "uint256", indexed: false },
-      { name: "teamAmt", type: "uint256", indexed: false },
-      { name: "ecosystemAmt", type: "uint256", indexed: false },
-      { name: "insuranceAmt", type: "uint256", indexed: false },
+      { name: "treasury", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
     ],
   },
 ] as const satisfies Abi;

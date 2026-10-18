@@ -87,7 +87,7 @@ You will interact with three contracts during integration:
 A single Ethereum wallet that will:
 
 - Co-sign every measurement packet from your fleet.
-- Be the recipient of every minted `$XRGY` token (net of the 1% minting fee, which is split off at mint time).
+- Be the recipient of every minted `$XRGY` token (net of the mint split: 10% Key Energy treasury — 5% after four years — and 1% insurance reserve, taken at mint time).
 - Hold `CHAINLINK_RELAYER_ROLE` on OracleRouter (granted by protocol admin during onboarding — see §4).
 
 Generate this wallet **once** and protect it. In production, this is an HSM key or a cloud KMS key. In testnet you can use any 32-byte private key. The address must be stable across your fleet — every device's `MeasurementPacket` will be co-signed by this single VPP key.
@@ -210,7 +210,7 @@ The choice is made at the moment you call `registerDevice` for each device. Ther
 
 ### Step 4: Nothing to approve for the minting fee
 
-The 1% minting fee is split off inside the mint itself: `MintingEngine` mints 99% to your VPP cloud wallet and 1% to Settlement, which distributes it (Treasury 40 / Team 20 / Ecosystem 25 / Insurance 15) in the same transaction. No approval from your wallet is involved. (An approval to Settlement is needed only later, when your participants pay for energy with `settleEnergy` / `crossVPPSettle` — that fee is paid on top of the amount sent.)
+The mint is split inside the mint itself: `MintingEngine` mints 89% to your VPP cloud wallet, 10% to the Key Energy treasury (5% after the first four years from `mintShareStart`) and 1% to the `InsuranceReserve` contract, in the same transaction. No approval from your wallet is involved. (An approval to Settlement is needed only later, when your participants pay for energy with `settleEnergy` / `crossVPPSettle` — that fee is paid on top of the amount sent.)
 
 ### Step 5: Submit your first measurement packet
 
@@ -445,7 +445,7 @@ In one transaction, three events fire that you should index:
 
 1. **`OracleRouter.MeasurementVerified(deviceId, vppAddress, kwhAmount, timestamp, epoch)`** — packet passed dual-sig verification. Useful for UI feedback ("packet accepted").
 2. **`MintingEngine.EnergyMinted(deviceId, vppAddress, kwhAmount, tokensMinted, epoch, era)`** — tokens were minted to your VPP cloud wallet. `tokensMinted = (kwhAmount * rate) / 1e18`. In Era 0, `tokensMinted == kwhAmount`.
-3. **`XRGYToken.Transfer(0x0, vppAddress, tokensMinted - fee)`** — the standard ERC-20 mint event for your share. A second mint `Transfer(0x0, Settlement, fee)` and `Settlement.FeesDistributed(...)` follow for the 1% minting fee (`fee = tokensMinted * mintingFeeBps / 10_000`, 100 bps by default).
+3. **`XRGYToken.Transfer(0x0, vppAddress, tokensMinted - shares)`** — the standard ERC-20 mint event for your share. Two more mints follow — to the Key Energy treasury (`tokensMinted * keyShareBps() / 10_000`, 1,000 bps for the first four years, then 500) and to the InsuranceReserve (100 bps) — and `MintingEngine.MintSharesDistributed(treasury, treasuryAmount, reserve, reserveAmount)`.
 
 Optionally a `HalvingTriggered(newEra, newRateNumerator, totalSupplyAtHalving)` event fires if your mint crosses an era boundary.
 
@@ -485,8 +485,9 @@ function totalSupply() external view returns (uint256);
 // OracleRouter — lookup whether a packet was already submitted
 function isMeasurementProcessed(bytes32 packetHash) external view returns (bool);
 
-// Settlement — fee config (operator visibility)
-function mintingFeeBps() external view returns (uint16);  // currently 100 = 1%
+// Fee config (operator visibility)
+function keyShareBps() external view returns (uint256);      // MintingEngine: 1000 = 10% (500 after four years)
+function settlementFeeBps() external view returns (uint256); // Settlement: 25 = 0.25%, corridor 10–50
 ```
 
 For a one-stop public view of network state without RPC calls of your own, use the dashboard at [dashboard.keyenergy.io](https://dashboard.keyenergy.io).
@@ -532,7 +533,6 @@ You don't call Settlement during minting, but be aware:
 
 | Revert | Trigger |
 |---|---|
-| `NotMintingEngine()` | Calling `distributeMintingFee` directly. |
 | `AmountZero()` | `settleEnergy` or `crossVPPSettle` with zero `tokenAmount`. |
 | `FeeBpsTooHigh(uint256)` | Admin tried to set fee > 10%. Capped at 1000 bps. |
 
@@ -556,8 +556,8 @@ The protocol is fully working on Arbitrum Sepolia. It is not yet on mainnet. Her
 
 ### 10.3 Minting fee
 
-- **Since 17.10.2026:** the 1% minting fee is split off at mint time (99% to the VPP, 1% distributed by Settlement), with no approval and no `try/catch`. Earlier testnet mints pulled the fee back with `transferFrom` and skipped it silently when the VPP had not approved Settlement; those skipped fees were not recovered.
-- **Production:** unchanged — the same split.
+- **Since 18.10.2026:** every mint is split inside the mint — 89% to the VPP, 10% to the Key Energy treasury (5% after four years), 1% to the InsuranceReserve — with no approval and no `try/catch`. (17.10–18.10: a 1% fee split 40/20/25/15.) Earlier testnet mints pulled the fee back with `transferFrom` and skipped it silently when the VPP had not approved Settlement; those skipped fees were not recovered.
+- **Production:** the same split; the four-year clock (`mintShareStart`) starts at mainnet launch.
 
 ### 10.4 Single deployer holds all admin roles
 
@@ -569,10 +569,10 @@ The protocol is fully working on Arbitrum Sepolia. It is not yet on mainnet. Her
 - **Now:** `TEST_HOOK_ROLE` on MintingEngine permits the admin to override `totalVerifiedEnergyInStorage`, `currentEra`, `halvingThreshold`, `genesisTimestamp` — for testnet diagnostics and reset. State you read on testnet may have been admin-overridden.
 - **Production:** the role is revoked; the override functions revert.
 
-### 10.6 Identical fee receivers
+### 10.6 Fee receivers
 
-- **Now:** all four fee shares (treasury 40%, team 20%, ecosystem 25%, insurance 15%) go to the deployer address.
-- **Production:** four distinct wallets per the spec, configurable by the FEE_MANAGER multisig.
+- **Now:** the Key Energy treasury share and the settlement fee go to the deployer address; the 1% insurance share goes to the InsuranceReserve contract, whose release role is held by the admin.
+- **Production:** treasury held by a Key Energy multisig; the reserve's release role moves to community governance.
 
 ### 10.7 No real fiat off-ramp
 

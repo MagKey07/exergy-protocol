@@ -11,7 +11,8 @@ async function main() {
   console.log("Settlement.mintingEngine():", await settlement.mintingEngine());
   console.log("Expected (proxy):         ", ENGINE);
   console.log();
-  console.log("Settlement.mintingFeeBps():", await settlement.mintingFeeBps());
+  const engine = await ethers.getContractAt("MintingEngine", ENGINE);
+  console.log("MintingEngine.keyShareBps():", await engine.keyShareBps(), "mintShareStart:", await engine.mintShareStart());
   console.log("Settlement.settlementFeeBps():", await settlement.settlementFeeBps());
   console.log();
   console.log("VPP allowance(VPP, Settlement):", ethers.formatUnits(await token.allowance(VPP, SETTLEMENT), 18));

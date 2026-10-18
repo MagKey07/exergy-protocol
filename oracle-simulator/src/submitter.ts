@@ -184,7 +184,7 @@ export class Submitter {
     if (!fn) throw new Error(`submitMeasurement overload missing on contract: ${overload}`);
 
     // Explicit gas budget with headroom: one submission verifies two signatures,
-    // mints, and distributes the minting fee to four recipients.
+    // mints, and splits the mint between the VPP, the treasury and the insurance reserve.
     const txOpts = { gasLimit: 600_000n };
 
     if (shape === 0) {

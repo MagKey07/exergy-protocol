@@ -22,16 +22,16 @@ import {IMintingEngine} from "./interfaces/IMintingEngine.sol";
  * energy provider, never destruction. The float self-regulates via
  * MintingEngine.totalVerifiedEnergyInStorage.
  *
- * Fee semantics (testnet defaults):
- *  - Settlement fee: 0.25% (25 bps) of each settle, paid by payer ON TOP of
- *    the principal. So `settleEnergy(provider, A, k)` requires the payer to
- *    have approved `A + A*0.25%` to Settlement.
- *  - Minting fee: 1.0% (100 bps) of newly-minted tokens, pulled from the
- *    fresh mint via MintingEngine's post-mint hook. The VPP recipient must
- *    have a standing approval to Settlement to allow the pull. If approval
- *    is missing on testnet, the pull silently no-ops (engine swallows revert)
- *    — production should harden this.
- *  - Distribution: Treasury 40 / Team 20 / Ecosystem 25 / Insurance 15 (bps over 10_000).
+ * Fee semantics:
+ *  - Settlement fee: 0.25% (25 bps) of each settle, paid by the payer ON TOP of
+ *    the principal, 100% to the Key Energy treasury. So
+ *    `settleEnergy(provider, A, k)` requires the payer to have approved
+ *    `A + A*0.25%` to Settlement. The rate can only move inside the
+ *    constitutional corridor 0.1–0.5% (10–50 bps).
+ *  - Mint shares (Key Energy treasury, insurance reserve) are taken inside
+ *    MintingEngine at mint time; this contract only supplies the recipient
+ *    addresses via feeRecipients(). Fees are charged only here, at settlement —
+ *    never on plain token transfers.
  */
 contract Settlement is
     ISettlement,
@@ -53,20 +53,14 @@ contract Settlement is
     /// @notice May place participants into VPP perimeters (Phase 0: admin; Phase 1: VPP operators).
     bytes32 public constant PERIMETER_MANAGER_ROLE = keccak256("PERIMETER_MANAGER_ROLE");
 
-    /// @notice Hard ceiling on any fee bps to defang misconfigured fees.
-    uint256 public constant MAX_FEE_BPS = 1_000; // 10%
+    /// @notice Constitutional corridor for the settlement fee.
+    uint256 public constant MIN_SETTLEMENT_FEE_BPS = 10; // 0.1%
+    uint256 public constant MAX_SETTLEMENT_FEE_BPS = 50; // 0.5%
     uint256 public constant BPS_DENOMINATOR = 10_000;
 
     /// @notice Energy for a note settles at the floating index: notes = kWh ÷ index.
     ///         Tolerance covers the index moving between quote and inclusion.
     uint256 public constant INDEX_RATE_TOLERANCE_BPS = 100; // 1%
-
-    // Distribution shares (bps over 10_000 of the *fee*, not of the principal):
-    uint256 public constant TREASURY_SHARE_BPS = 4_000;
-    uint256 public constant TEAM_SHARE_BPS = 2_000;
-    uint256 public constant ECOSYSTEM_SHARE_BPS = 2_500;
-    uint256 public constant INSURANCE_SHARE_BPS = 1_500;
-    // (Sums to 10_000 = 100% of fee.)
 
     // ---------------------------------------------------------------------
     // Storage
@@ -76,7 +70,10 @@ contract Settlement is
     IMintingEngine public mintingEngine;
 
     uint256 public override settlementFeeBps; // default 25 (=0.25%)
-    uint256 public override mintingFeeBps; // default 100 (=1.00%)
+    /// @dev Former minting-fee rate; unused since mint shares became constants in
+    ///      MintingEngine (18.10.2026). Kept only to preserve the storage layout.
+    /// @custom:oz-renamed-from mintingFeeBps
+    uint256 private _unusedMintingFeeBps;
 
     FeeRecipients private _recipients;
 
@@ -119,7 +116,6 @@ contract Settlement is
         mintingEngine = IMintingEngine(mintingEngine_);
         _recipients = recipients_;
         settlementFeeBps = 25; // 0.25%
-        mintingFeeBps = 100; // 1.00%
 
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(UPGRADER_ROLE, admin);
@@ -128,7 +124,6 @@ contract Settlement is
 
         emit FeeRecipientsUpdated(recipients_);
         emit SettlementFeeBpsUpdated(25);
-        emit MintingFeeBpsUpdated(100);
     }
 
     // ---------------------------------------------------------------------
@@ -168,11 +163,8 @@ contract Settlement is
         // Pull principal → provider. (NO burn; this is a transfer.)
         token.safeTransferFrom(msg.sender, provider, tokenAmount);
 
-        // Pull fee → this contract, then distribute.
-        if (fee > 0) {
-            token.safeTransferFrom(msg.sender, address(this), fee);
-            _distributeFees(fee);
-        }
+        // Fee → Key Energy treasury.
+        if (fee > 0) _payFee(fee);
 
         // Report the consumption (the pool itself follows the next charge-level report).
         mintingEngine.recordEnergyConsumption(kwhConsumed);
@@ -192,10 +184,7 @@ contract Settlement is
         uint256 fee = (tokenAmount * settlementFeeBps) / BPS_DENOMINATOR;
 
         token.safeTransferFrom(msg.sender, receiver, tokenAmount);
-        if (fee > 0) {
-            token.safeTransferFrom(msg.sender, address(this), fee);
-            _distributeFees(fee);
-        }
+        if (fee > 0) _payFee(fee);
 
         // Cross-VPP transfers do not adjust totalVerifiedEnergyInStorage by
         // themselves — the energy delivery (or lack thereof) is reported by
@@ -225,19 +214,6 @@ contract Settlement is
     }
 
     // ---------------------------------------------------------------------
-    // Minting fee distribution — called by MintingEngine
-    // ---------------------------------------------------------------------
-
-    /// @inheritdoc ISettlement
-    /// @dev Not gated by `whenNotPaused`: pausing settlement must never block
-    ///      minting for verified energy.
-    function distributeMintingFee(uint256 feeAmount) external override {
-        if (msg.sender != address(mintingEngine)) revert NotMintingEngine();
-        if (feeAmount == 0) return;
-        _distributeFees(feeAmount);
-    }
-
-    // ---------------------------------------------------------------------
     // Admin
     // ---------------------------------------------------------------------
 
@@ -255,16 +231,11 @@ contract Settlement is
 
     /// @inheritdoc ISettlement
     function setSettlementFeeBps(uint256 newBps) external override onlyRole(FEE_MANAGER_ROLE) {
-        if (newBps > MAX_FEE_BPS) revert FeeBpsTooHigh(newBps);
+        if (newBps < MIN_SETTLEMENT_FEE_BPS || newBps > MAX_SETTLEMENT_FEE_BPS) {
+            revert SettlementFeeOutOfCorridor(newBps);
+        }
         settlementFeeBps = newBps;
         emit SettlementFeeBpsUpdated(newBps);
-    }
-
-    /// @inheritdoc ISettlement
-    function setMintingFeeBps(uint256 newBps) external override onlyRole(FEE_MANAGER_ROLE) {
-        if (newBps > MAX_FEE_BPS) revert FeeBpsTooHigh(newBps);
-        mintingFeeBps = newBps;
-        emit MintingFeeBpsUpdated(newBps);
     }
 
     function pause() external onlyRole(PAUSER_ROLE) {
@@ -288,23 +259,11 @@ contract Settlement is
     // Internals
     // ---------------------------------------------------------------------
 
-    /**
-     * @dev Distribute a collected fee per the constant share table.
-     *      Insurance gets the rounding remainder so the sum is always exact.
-     */
-    function _distributeFees(uint256 feeAmount) internal {
-        uint256 toTreasury = (feeAmount * TREASURY_SHARE_BPS) / BPS_DENOMINATOR;
-        uint256 toTeam = (feeAmount * TEAM_SHARE_BPS) / BPS_DENOMINATOR;
-        uint256 toEcosystem = (feeAmount * ECOSYSTEM_SHARE_BPS) / BPS_DENOMINATOR;
-        uint256 toInsurance = feeAmount - toTreasury - toTeam - toEcosystem;
-
-        FeeRecipients memory r = _recipients;
-        if (toTreasury > 0) token.safeTransfer(r.treasury, toTreasury);
-        if (toTeam > 0) token.safeTransfer(r.team, toTeam);
-        if (toEcosystem > 0) token.safeTransfer(r.ecosystem, toEcosystem);
-        if (toInsurance > 0) token.safeTransfer(r.insurance, toInsurance);
-
-        emit FeesDistributed(toTreasury, toTeam, toEcosystem, toInsurance);
+    /// @dev Pull the settlement fee from the payer straight to the Key Energy treasury.
+    function _payFee(uint256 feeAmount) internal {
+        address treasury = _recipients.treasury;
+        token.safeTransferFrom(msg.sender, treasury, feeAmount);
+        emit SettlementFeePaid(treasury, feeAmount);
     }
 
     // ---------------------------------------------------------------------

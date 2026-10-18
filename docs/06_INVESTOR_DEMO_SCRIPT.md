@@ -93,10 +93,10 @@ npx hardhat run --network arbitrumSepolia scripts/demo-settle.ts
 
 Open the resulting tx on Arbiscan. Highlight:
 
-- 4 fee distribution Transfer events: Treasury (40%), Team (20%), Ecosystem (25%), Insurance (15%)
+- One fee Transfer event: 0.25% to the Key Energy treasury (`SettlementFeePaid`)
 - Net transfer to bob
 
-> "When tokens move between participants, 0.25% goes to a four-way split that funds the company treasury, team, ecosystem grants, and an insurance fund. The treasury 40% is what the equity holders get. That's how the company captures value — not from token sales, never from token sales — from protocol fees."
+> "Every mint gives 10% to the Key Energy treasury for the first four years, then 5%, and 1% to the network's insurance reserve; every settlement pays 0.25% to the treasury. That's how the company captures value — not from token sales, never from token sales — from the protocol's own rules."
 
 ### Minute 4:15 — Show the floating index dynamic (45 sec)
 

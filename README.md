@@ -12,7 +12,7 @@ A working testnet implementation of a sectoral monetary system: tokens are minte
 
 **Tokens come from energy, not from issuance.** $XRGY genesis supply is zero. The only path to new tokens is `MintingEngine.commitVerifiedEnergy`, which itself is gated to the OracleRouter, which itself rejects any measurement packet that lacks both a device-level ECDSA signature and a VPP-cloud co-signature (the Anti-Simulation Lock). Every minted token corresponds to a real kWh sitting in a real battery, attested to by a tamper-resistant chain of cryptographic signatures. The minting rate halves every 1,000,000 tokens, so each successive token is denser in stored energy than its predecessors. Halving is driven by physics, not by adoption.
 
-**The protocol is the engine, not the company.** Investors buy equity in Key Energy, Inc. (Delaware C-Corp) via standard SAFE — they do not buy tokens, and the company does not sell tokens to anyone, ever. Treasury accrues only via a 40% share of protocol fees, paid in already-circulating $XRGY. The smart contracts run on Arbitrum One (Ethereum L2 security) and continue to mint, halve, and settle even if the company dissolves; equity is enforced through Delaware corporate law, not through a wallet. This is by deliberate design.
+**The protocol is the engine, not the company.** Investors buy equity in Key Energy, Inc. (Delaware C-Corp) via standard SAFE — they do not buy tokens, and the company does not sell tokens to anyone, ever. The treasury accrues only through the protocol's own rules: 10% of every mint for the first four years after mainnet, then 5% (plus 1% of every mint to a network insurance reserve), and a 0.25% fee on settlements — earned as measured energy is stored and paid for, never through a sale. The smart contracts run on Arbitrum One (Ethereum L2 security) and continue to mint, halve, and settle even if the company dissolves; equity is enforced through Delaware corporate law, not through a wallet. This is by deliberate design.
 
 ---
 
@@ -109,8 +109,8 @@ Within a minute the dashboard "Total verified energy" and "Total tokens minted" 
                                   transfer/permit │
                                                   ▼
                                             ┌──────────────────┐
-                                            │  Settlement      │── fees ──▶ Treasury 40% / Team 20% /
-                                            │  P2P + 0.25% fee │            Ecosystem 25% / Insurance 15%
+                                            │  Settlement      │── 0.25% fee ──▶ Key Energy treasury
+                                            │  + 0.25% fee     │  (mint split: 10%→5% treasury, 1% reserve)
                                             └─────┬────────────┘
                                                   │ admin (testnet only)
                                                   ▼

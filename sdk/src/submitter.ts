@@ -12,8 +12,8 @@ import { SignedPacket } from "./signing";
 /**
  * Recommended gas limit for `submitMeasurement`.
  *
- * One submission verifies two signatures, mints, and distributes the 1%
- * minting fee to four recipients.
+ * One submission verifies two signatures and mints, splitting the mint
+ * between the VPP, the Key Energy treasury and the insurance reserve.
  *
  * 600,000 is comfortably above the worst-case observed gas usage
  * (~430k) on Arbitrum Sepolia. Adjust upward if you start hitting

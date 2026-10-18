@@ -15,7 +15,7 @@ A working end-to-end loop on a public testnet:
 2. The device's HSM-equivalent key signs it. The VPP cloud co-signs it.
 3. The dual-signed packet enters Arbitrum Sepolia via the OracleRouter.
 4. MintingEngine mints `kwh_amount * mint_rate(era)` $XRGY to the VPP operator.
-5. Tokens move between participants. Settlement.sol takes 0.25% fees, distributes 40/20/25/15.
+5. Tokens move between participants. Settlement.sol takes a 0.25% fee, 100% to the Key Energy treasury; every mint is split 89/10/1 (community / treasury / insurance reserve; 94/5/1 after four years).
 6. When energy is consumed, storage drops; **tokens do NOT burn** (spec §2.4).
 
 If an investor sees the dashboard tick up live as the oracle simulator drives kWh, the chicken-and-egg argument ("the protocol is hypothetical") loses its bite.

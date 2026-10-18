@@ -22,8 +22,10 @@ import {
   deployFullSystem,
   EPOCH_DURATION_SECONDS,
   HALVING_THRESHOLD_WEI,
-  FEE_SPLIT,
-  MINT_FEE_BPS,
+  EARLY_SHARE_PERIOD_SECONDS,
+  KEY_SHARE_EARLY_BPS,
+  KEY_SHARE_LATE_BPS,
+  RESERVE_SHARE_BPS,
   ONE_TOKEN,
   netOfMintFee,
 } from "./helpers/fixtures";
@@ -410,33 +412,87 @@ describe("MintingEngine", () => {
   // commitment in code.
   // ---------------------------------------------------------------------
   // ---------------------------------------------------------------------
-  // Minting fee is split off at mint time. It used to be pulled back from the
-  // VPP with transferFrom, which needed an approval the VPPs never gave, and
-  // the failure was swallowed — on Sepolia ~1.38 notes of fees were never
-  // taken. These tests pin the split.
+  // Mint split (protocol constitution): of every mint, the Key Energy treasury
+  // gets 10% for four years after mintShareStart, then 5%; the insurance
+  // reserve gets 1%; the rest goes to the VPP. Taken inside the mint — no
+  // approval, nothing to skip (the earlier pull-back design lost ~1.38 notes
+  // of fees on Sepolia).
   // ---------------------------------------------------------------------
-  describe("minting fee", () => {
-    it("takes 1% at mint without any approval and distributes it 40/20/25/15", async () => {
+  describe("mint split", () => {
+    it("splits every mint 89% VPP / 10% treasury / 1% reserve without any approval", async () => {
       const { mintingEngine, oracleRouter, vppA, token, settlement, treasury, team, ecosystem, insurance } =
         await loadFixture(deployFullSystem);
       const vppAddr = await vppA.getAddress();
-      const settlementAddr = await settlement.getAddress();
-      expect(await token.allowance(vppAddr, settlementAddr)).to.equal(0n);
+      expect(await token.allowance(vppAddr, await settlement.getAddress())).to.equal(0n);
+      expect(await mintingEngine.keyShareBps()).to.equal(KEY_SHARE_EARLY_BPS);
 
-      await mintAs(mintingEngine, await oracleRouter.getAddress(), ethers.id("fee-device"), vppAddr, 100n);
+      await mintAs(mintingEngine, await oracleRouter.getAddress(), ethers.id("split-device"), vppAddr, 100n);
 
       const gross = 100n * ONE_TOKEN;
-      const fee = (gross * MINT_FEE_BPS) / 10_000n;
+      const toTreasury = (gross * KEY_SHARE_EARLY_BPS) / 10_000n;
+      const toReserve = (gross * RESERVE_SHARE_BPS) / 10_000n;
       expect(await token.totalSupply()).to.equal(gross);
-      expect(await token.balanceOf(vppAddr)).to.equal(gross - fee);
-      expect(await token.balanceOf(await treasury.getAddress())).to.equal((fee * FEE_SPLIT.treasury) / 10_000n);
-      expect(await token.balanceOf(await team.getAddress())).to.equal((fee * FEE_SPLIT.team) / 10_000n);
-      expect(await token.balanceOf(await ecosystem.getAddress())).to.equal((fee * FEE_SPLIT.ecosystem) / 10_000n);
-      expect(await token.balanceOf(await insurance.getAddress())).to.equal((fee * FEE_SPLIT.insurance) / 10_000n);
-      expect(await token.balanceOf(settlementAddr)).to.equal(0n);
+      expect(await token.balanceOf(vppAddr)).to.equal(gross - toTreasury - toReserve);
+      expect(await token.balanceOf(await treasury.getAddress())).to.equal(toTreasury);
+      expect(await token.balanceOf(await insurance.getAddress())).to.equal(toReserve);
+      expect(await token.balanceOf(await team.getAddress())).to.equal(0n);
+      expect(await token.balanceOf(await ecosystem.getAddress())).to.equal(0n);
+      expect(await token.balanceOf(await settlement.getAddress())).to.equal(0n);
     });
 
-    it("a paused Settlement does not block minting, and the fee is still taken", async () => {
+    it("emits MintSharesDistributed with both recipients and amounts", async () => {
+      const { mintingEngine, oracleRouter, vppA, treasury, insurance } = await loadFixture(deployFullSystem);
+      const oracleAddr = await oracleRouter.getAddress();
+      await ethers.provider.send("hardhat_impersonateAccount", [oracleAddr]);
+      await ethers.provider.send("hardhat_setBalance", [oracleAddr, "0x56BC75E2D63100000"]);
+      const oracle = await ethers.getSigner(oracleAddr);
+      const gross = 100n * ONE_TOKEN;
+      await expect(
+        mintingEngine
+          .connect(oracle)
+          .commitVerifiedEnergy(ethers.id("event-device"), await vppA.getAddress(), gross, 1, gross, 100),
+      )
+        .to.emit(mintingEngine, "MintSharesDistributed")
+        .withArgs(await treasury.getAddress(), gross / 10n, await insurance.getAddress(), gross / 100n);
+      await ethers.provider.send("hardhat_stopImpersonatingAccount", [oracleAddr]);
+    });
+
+    it("after four years from mintShareStart the Key Energy share drops to 5%", async () => {
+      const { mintingEngine, oracleRouter, vppA, token, governor, treasury } = await loadFixture(deployFullSystem);
+      const now = BigInt(await time.latest());
+      await mintingEngine.connect(governor).setMintShareStart(now);
+      expect(await mintingEngine.keyShareBps()).to.equal(KEY_SHARE_EARLY_BPS);
+
+      await time.increase(EARLY_SHARE_PERIOD_SECONDS - 10n);
+      expect(await mintingEngine.keyShareBps()).to.equal(KEY_SHARE_EARLY_BPS);
+      await time.increase(20n);
+      expect(await mintingEngine.keyShareBps()).to.equal(KEY_SHARE_LATE_BPS);
+
+      const vppAddr = await vppA.getAddress();
+      await mintAs(mintingEngine, await oracleRouter.getAddress(), ethers.id("late-device"), vppAddr, 100n);
+      const gross = 100n * ONE_TOKEN;
+      expect(await token.balanceOf(vppAddr)).to.equal(netOfMintFee(gross, KEY_SHARE_LATE_BPS));
+      expect(await token.balanceOf(await treasury.getAddress())).to.equal((gross * KEY_SHARE_LATE_BPS) / 10_000n);
+    });
+
+    it("mintShareStart is set once, only by the admin, and never to zero", async () => {
+      const { mintingEngine, governor, attacker } = await loadFixture(deployFullSystem);
+      await expect(mintingEngine.connect(attacker).setMintShareStart(1n)).to.be.reverted;
+      await expect(mintingEngine.connect(governor).setMintShareStart(0n)).to.be.revertedWithCustomError(
+        mintingEngine,
+        "InvalidMintShareStart",
+      );
+      await expect(mintingEngine.connect(governor).setMintShareStart(123n))
+        .to.emit(mintingEngine, "MintShareStartSet")
+        .withArgs(123n);
+      await expect(mintingEngine.connect(governor).setMintShareStart(456n)).to.be.revertedWithCustomError(
+        mintingEngine,
+        "AlreadySet",
+      );
+      expect(await mintingEngine.mintShareStart()).to.equal(123n);
+    });
+
+    it("a paused Settlement does not block minting, and the shares are still taken", async () => {
       const { mintingEngine, oracleRouter, vppA, token, settlement, governor, deployer, treasury } =
         await loadFixture(deployFullSystem);
       const pauser = (await settlement.hasRole(await settlement.PAUSER_ROLE(), await governor.getAddress()))
@@ -445,18 +501,10 @@ describe("MintingEngine", () => {
       await settlement.connect(pauser).pause();
 
       const vppAddr = await vppA.getAddress();
-      await mintAs(mintingEngine, await oracleRouter.getAddress(), ethers.id("fee-device-paused"), vppAddr, 100n);
+      await mintAs(mintingEngine, await oracleRouter.getAddress(), ethers.id("paused-device"), vppAddr, 100n);
 
       expect(await token.balanceOf(vppAddr)).to.equal(netOfMintFee(100n * ONE_TOKEN));
-      expect(await token.balanceOf(await treasury.getAddress())).to.be.gt(0n);
-    });
-
-    it("only MintingEngine can trigger minting-fee distribution", async () => {
-      const { settlement, alice } = await loadFixture(deployFullSystem);
-      await expect(settlement.connect(alice).distributeMintingFee(1n)).to.be.revertedWithCustomError(
-        settlement,
-        "NotMintingEngine",
-      );
+      expect(await token.balanceOf(await treasury.getAddress())).to.equal(10n * ONE_TOKEN);
     });
   });
 

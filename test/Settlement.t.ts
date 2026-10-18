@@ -21,7 +21,6 @@ import { ethers } from "hardhat";
 import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import {
   BPS_DENOMINATOR,
-  FEE_SPLIT,
   ONE_TOKEN,
   SETTLEMENT_FEE_BPS,
   deployFullSystem,
@@ -81,11 +80,8 @@ function splitFee(fee: bigint): {
   ecosystem: bigint;
   insurance: bigint;
 } {
-  const treasury = (fee * FEE_SPLIT.treasury) / BPS_DENOMINATOR;
-  const team = (fee * FEE_SPLIT.team) / BPS_DENOMINATOR;
-  const ecosystem = (fee * FEE_SPLIT.ecosystem) / BPS_DENOMINATOR;
-  const insurance = fee - treasury - team - ecosystem;
-  return { treasury, team, ecosystem, insurance };
+  // The whole settlement fee goes to the Key Energy treasury.
+  return { treasury: fee, team: 0n, ecosystem: 0n, insurance: 0n };
 }
 
 /** Fee-recipient balances, so tests can assert on what one settlement added
@@ -109,7 +105,7 @@ describe("Settlement", () => {
       const bobAddr = await bob.getAddress();
 
       // Seed alice with 1100 tokens (1000 principal + headroom for 0.25% fee).
-      await seedTokens(sys, aliceAddr, 1100n);
+      await seedTokens(sys, aliceAddr, 1200n);
 
       const principal = 1000n * ONE_TOKEN;
       const fee = (principal * SETTLEMENT_FEE_BPS) / BPS_DENOMINATOR;
@@ -231,7 +227,7 @@ describe("Settlement", () => {
       const sys = await loadFixture(deployWithPerimeter);
       const { token, settlement, alice, bob, treasury, team, ecosystem, insurance } = sys;
 
-      await seedTokens(sys, await alice.getAddress(), 1100n);
+      await seedTokens(sys, await alice.getAddress(), 1200n);
 
       const principal = 1000n * ONE_TOKEN;
       const fee = (principal * SETTLEMENT_FEE_BPS) / BPS_DENOMINATOR;
@@ -316,12 +312,12 @@ describe("Settlement", () => {
     });
   });
 
-  describe("Fee distribution math — 40 / 20 / 25 / 15", () => {
-    it("distributes exactly per Treasury 40% / Team 20% / Ecosystem 25% / Insurance 15%", async () => {
+  describe("Settlement fee — 100% to the Key Energy treasury", () => {
+    it("pays the whole fee to the treasury and nothing to the other addresses", async () => {
       const sys = await loadFixture(deployWithPerimeter);
       const { token, settlement, alice, bob, treasury, team, ecosystem, insurance } = sys;
 
-      await seedTokens(sys, await alice.getAddress(), 11_000n);
+      await seedTokens(sys, await alice.getAddress(), 12_000n);
       const principal = 10_000n * ONE_TOKEN;
       const fee = (principal * SETTLEMENT_FEE_BPS) / BPS_DENOMINATOR;
 
@@ -334,29 +330,37 @@ describe("Settlement", () => {
       const ecosystemBal = (await token.balanceOf(await ecosystem.getAddress())) - before.ecosystem;
       const insuranceBal = (await token.balanceOf(await insurance.getAddress())) - before.insurance;
 
-      // Treasury / Team / Ecosystem use floor bps math; Insurance gets the remainder.
-      expect(treasuryBal).to.equal((fee * FEE_SPLIT.treasury) / BPS_DENOMINATOR);
-      expect(teamBal).to.equal((fee * FEE_SPLIT.team) / BPS_DENOMINATOR);
-      expect(ecosystemBal).to.equal((fee * FEE_SPLIT.ecosystem) / BPS_DENOMINATOR);
-      expect(insuranceBal).to.equal(fee - treasuryBal - teamBal - ecosystemBal);
-
-      // Sum is exactly the fee — no leak, no overpay.
-      expect(treasuryBal + teamBal + ecosystemBal + insuranceBal).to.equal(fee);
+      expect(treasuryBal).to.equal(fee);
+      expect(teamBal).to.equal(0n);
+      expect(ecosystemBal).to.equal(0n);
+      expect(insuranceBal).to.equal(0n);
+      expect(await token.balanceOf(await settlement.getAddress())).to.equal(0n);
     });
 
-    it("emits FeesDistributed with the four bucket amounts", async () => {
+    it("emits SettlementFeePaid with the treasury and the amount", async () => {
       const sys = await loadFixture(deployWithPerimeter);
       const { token, settlement, alice, bob } = sys;
-      await seedTokens(sys, await alice.getAddress(), 1100n);
+      await seedTokens(sys, await alice.getAddress(), 1200n);
 
       const principal = 1000n * ONE_TOKEN;
       const fee = (principal * SETTLEMENT_FEE_BPS) / BPS_DENOMINATOR;
-      const split = splitFee(fee);
-
       await token.connect(alice).approve(await settlement.getAddress(), principal + fee);
       await expect(settlement.connect(alice).settleEnergy(await bob.getAddress(), principal, principal))
-        .to.emit(settlement, "FeesDistributed")
-        .withArgs(split.treasury, split.team, split.ecosystem, split.insurance);
+        .to.emit(settlement, "SettlementFeePaid")
+        .withArgs(await sys.treasury.getAddress(), fee);
+    });
+
+    it("the fee rate moves only inside the 0.1–0.5% corridor", async () => {
+      const { settlement, governor } = await loadFixture(deployWithPerimeter);
+      for (const bad of [0n, 9n, 51n, 1000n]) {
+        await expect(settlement.connect(governor).setSettlementFeeBps(bad))
+          .to.be.revertedWithCustomError(settlement, "SettlementFeeOutOfCorridor")
+          .withArgs(bad);
+      }
+      for (const ok of [10n, 25n, 50n]) {
+        await settlement.connect(governor).setSettlementFeeBps(ok);
+        expect(await settlement.settlementFeeBps()).to.equal(ok);
+      }
     });
   });
 
@@ -407,7 +411,7 @@ describe("Settlement", () => {
     it("settleEnergy does NOT decrease totalSupply (compares before/after)", async () => {
       const sys = await loadFixture(deployWithPerimeter);
       const { token, settlement, alice, bob } = sys;
-      await seedTokens(sys, await alice.getAddress(), 1100n);
+      await seedTokens(sys, await alice.getAddress(), 1200n);
       const supplyBefore = await token.totalSupply();
 
       const principal = 1000n * ONE_TOKEN;
@@ -422,7 +426,7 @@ describe("Settlement", () => {
     it("crossVPPSettle does NOT decrease totalSupply", async () => {
       const sys = await loadFixture(deployWithPerimeter);
       const { token, settlement, alice, bob } = sys;
-      await seedTokens(sys, await alice.getAddress(), 1100n);
+      await seedTokens(sys, await alice.getAddress(), 1200n);
       const supplyBefore = await token.totalSupply();
 
       const principal = 800n * ONE_TOKEN;

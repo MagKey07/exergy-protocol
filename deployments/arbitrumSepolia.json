@@ -14,15 +14,16 @@
     "MintingEngine": "0x223cEf9882f5F7528CCC4521773683B83723B5A4",
     "OracleRouter": "0x43F2c96AE8f866C181b4ce97966Bd4e4a36AE2e5",
     "Settlement": "0xBaFe8D465F9D7fCab723e41c0bA13D328b2E4C9C",
-    "ProtocolGovernance": "0x6444902f410aFd866BDA058d64C596ad4Aa1ad70"
+    "ProtocolGovernance": "0x6444902f410aFd866BDA058d64C596ad4Aa1ad70",
+    "InsuranceReserve": "0x9fCC55AC34E6de086858E55D1dF31945087641a7"
   },
   "implementations": {
-    "MintingEngine": "0x2a7f7f2F6Db81589FD4Ca3753EaBF7b5508d466C",
+    "MintingEngine": "0x7054d42B4625500098705BD3250ef8D218EF6ee9",
     "OracleRouter": "0xa809DD280F39DE00efCDe86101Eb5CbF7a55eFC4",
-    "Settlement": "0x40c780c5fB4972AAf78f91FDDf96006424d49227",
+    "Settlement": "0x5aF6b40b043E026d93473de5dea0669cd0Df9Eb5",
     "ProtocolGovernance": "0xf5f602D0cafAA3eb33592CCEF88c9e63ffbb3aBd"
   },
   "deployedAt": "2026-05-09T16:38:25.080Z",
   "blockNumber": 266836628,
-  "lastUpgradeAt": "2026-10-17T20:14:06.197Z"
+  "lastUpgradeAt": "2026-10-18T15:16:08.398Z"
 }

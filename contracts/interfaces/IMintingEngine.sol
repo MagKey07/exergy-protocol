@@ -162,6 +162,13 @@ interface IMintingEngine {
      */
     /// @notice A newly connected battery placed the charge it already held into the
     ///         network stock. No notes are minted for it: notes come only from new charging.
+    /// @notice A mint's shares went to the Key Energy treasury and the insurance reserve.
+    event MintSharesDistributed(address indexed treasury, uint256 treasuryAmount, address indexed reserve, uint256 reserveAmount);
+    /// @notice The mint-share schedule started (mainnet launch).
+    event MintShareStartSet(uint64 start);
+    /// @notice The mint-share start must be a real timestamp.
+    error InvalidMintShareStart();
+
     event InitialChargeRegistered(bytes32 indexed deviceId, address indexed vppAddress, uint256 heldKwh, uint256 totalVerifiedEnergyInStorage);
 
     event StateOfChargeReported(

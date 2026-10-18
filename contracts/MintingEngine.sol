@@ -101,8 +101,21 @@ contract MintingEngine is
      */
     uint256 public constant MAX_CYCLES_PER_EPOCH = 2;
 
-    /// @notice Basis-point denominator for the minting fee read from Settlement.
+    /// @notice Basis-point denominator for the mint shares below.
     uint256 private constant FEE_BPS_DENOMINATOR = 10_000;
+
+    /**
+     * @notice Split of every mint (protocol constitution — constants, no setter).
+     * @dev Of every newly minted note: Key Energy treasury 10% for the first
+     *      EARLY_SHARE_PERIOD after `mintShareStart`, 5% after; the network's
+     *      insurance reserve 1%; the rest to the community (VPP) that stored the
+     *      energy. Recipient addresses are Settlement.feeRecipients().treasury and
+     *      .insurance. Total supply is unchanged: the shares are part of the mint.
+     */
+    uint256 public constant KEY_SHARE_EARLY_BPS = 1_000; // 10%
+    uint256 public constant KEY_SHARE_LATE_BPS = 500; // 5%
+    uint256 public constant RESERVE_SHARE_BPS = 100; // 1%
+    uint256 public constant EARLY_SHARE_PERIOD = 4 * 365 days;
 
     // ---------------------------------------------------------------------
     // Storage
@@ -140,9 +153,13 @@ contract MintingEngine is
      */
     mapping(bytes32 => DeviceCycleState) private _deviceCycleState;
 
+    /// @notice Start of the mint-share schedule (the mainnet launch). Set once; 0 = not set,
+    ///         in which case the early share applies.
+    uint64 public mintShareStart;
+
     /// @dev Reserved storage gap for upgradeable layout safety.
-    /// @dev DECREMENTED from 40 → 39 to account for new `_deviceCycleState` mapping above.
-    uint256[39] private __gap;
+    /// @dev DECREMENTED 40 → 39 for `_deviceCycleState`, 39 → 38 for `mintShareStart`.
+    uint256[38] private __gap;
 
     // ---------------------------------------------------------------------
     // Initializer
@@ -286,24 +303,49 @@ contract MintingEngine is
         _syncDeviceStoredEnergy(deviceId, storageCapacity, chargeLevelPercent);
         totalTokensMinted += tokensMinted;
 
-        // Split the mint: the minting fee goes to Settlement for distribution,
-        // the rest to the VPP. Taken at mint time, so no approval is needed and
-        // the fee cannot be skipped. Total supply is the same either way.
-        uint256 fee;
+        // Split the mint (constitution): Key Energy treasury share + insurance
+        // reserve share, the rest to the VPP. Taken inside the mint, so no
+        // approval is needed and nothing can be skipped. Total supply is the
+        // same either way.
+        address treasury;
+        address reserve;
+        uint256 toTreasury;
+        uint256 toReserve;
         if (address(settlement) != address(0)) {
-            fee = (tokensMinted * settlement.mintingFeeBps()) / FEE_BPS_DENOMINATOR;
+            ISettlement.FeeRecipients memory r = settlement.feeRecipients();
+            treasury = r.treasury;
+            reserve = r.insurance;
+            toTreasury = (tokensMinted * keyShareBps()) / FEE_BPS_DENOMINATOR;
+            toReserve = (tokensMinted * RESERVE_SHARE_BPS) / FEE_BPS_DENOMINATOR;
         }
-        token.mint(vppAddress, tokensMinted - fee);
+        token.mint(vppAddress, tokensMinted - toTreasury - toReserve);
 
         emit EnergyMinted(deviceId, vppAddress, kwhAmount, tokensMinted, epoch, era);
 
         // Lazy halving check after mint. May advance multiple eras at once.
         _checkAndAdvanceHalving();
 
-        if (fee > 0) {
-            token.mint(address(settlement), fee);
-            settlement.distributeMintingFee(fee);
+        if (toTreasury > 0) token.mint(treasury, toTreasury);
+        if (toReserve > 0) token.mint(reserve, toReserve);
+        if (toTreasury + toReserve > 0) {
+            emit MintSharesDistributed(treasury, toTreasury, reserve, toReserve);
         }
+    }
+
+    /// @notice Key Energy's share of a mint right now, in bps of the minted amount.
+    function keyShareBps() public view returns (uint256) {
+        if (mintShareStart == 0 || block.timestamp < uint256(mintShareStart) + EARLY_SHARE_PERIOD) {
+            return KEY_SHARE_EARLY_BPS;
+        }
+        return KEY_SHARE_LATE_BPS;
+    }
+
+    /// @notice Set the start of the mint-share schedule (the mainnet launch). Once only.
+    function setMintShareStart(uint64 start) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (start == 0) revert InvalidMintShareStart();
+        if (mintShareStart != 0) revert AlreadySet();
+        mintShareStart = start;
+        emit MintShareStartSet(start);
     }
 
     // ---------------------------------------------------------------------

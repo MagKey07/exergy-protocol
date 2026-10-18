@@ -33,21 +33,17 @@ export const HALVING_THRESHOLD_WEI = HALVING_THRESHOLD_TOKENS * ONE_TOKEN;
 /** Spec §2.2 + §3: 24h epoch boundaries. */
 export const EPOCH_DURATION_SECONDS = 24n * 60n * 60n;
 
-/** Fee bps per Technical_Blueprint.md §2.4. */
-export const MINT_FEE_BPS = 100n; // 1.00%
+/** Mint split (protocol constitution): Key Energy treasury 10% for four years, then 5%; insurance reserve 1%. */
+export const KEY_SHARE_EARLY_BPS = 1000n; // 10%
+export const KEY_SHARE_LATE_BPS = 500n; // 5%
+export const RESERVE_SHARE_BPS = 100n; // 1%
+export const EARLY_SHARE_PERIOD_SECONDS = 4n * 365n * 24n * 60n * 60n;
 
-/** What a VPP receives from a mint of `gross` notes: the minting fee is split off at mint time. */
-export const netOfMintFee = (gross: bigint): bigint => gross - (gross * MINT_FEE_BPS) / 10_000n;
-export const SETTLEMENT_FEE_BPS = 25n; // 0.25%
+/** What a VPP receives from a mint of `gross` notes (early period unless a key share is given). */
+export const netOfMintFee = (gross: bigint, keyBps: bigint = KEY_SHARE_EARLY_BPS): bigint =>
+  gross - (gross * keyBps) / 10_000n - (gross * RESERVE_SHARE_BPS) / 10_000n;
+export const SETTLEMENT_FEE_BPS = 25n; // 0.25%, 100% to the Key Energy treasury
 export const BPS_DENOMINATOR = 10_000n;
-
-/** Fee distribution split (sums to 100%). Spec §2.4. */
-export const FEE_SPLIT = {
-  treasury: 4000n, // 40%
-  team: 2000n, // 20% (4y vest in production; vesting handled outside MVP)
-  ecosystem: 2500n, // 25%
-  insurance: 1500n, // 15%
-};
 
 export interface DeployedSystem {
   // Signers

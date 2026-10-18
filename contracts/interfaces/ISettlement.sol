@@ -11,21 +11,20 @@ pragma solidity ^0.8.24;
  * keeps circulating. The floating index self-regulates as the MintingEngine
  * tracks totalVerifiedEnergyInStorage moving with physical reality.
  *
- * Fee structure (per Technical_Blueprint.md §2.4):
- *  - Minting fee: 1% of newly-minted tokens. MintingEngine splits every mint
- *    itself — net to the VPP, the fee to this contract — and calls
- *    `distributeMintingFee`. No approval from the VPP is involved, so the fee
- *    cannot be silently skipped.
- *  - Settlement fee: 0.25% of every settle transfer.
- *  - Distribution: Treasury 40%, Team 20%, Ecosystem 25%, Insurance 15%.
+ * Fee structure (protocol constitution):
+ *  - Every mint (taken inside MintingEngine): Key Energy treasury 10% for the
+ *    first four years after mainnet, then 5%; insurance reserve 1%; the rest to
+ *    the community that stored the energy.
+ *  - Settlement fee: 0.25% of every settle, paid on top, 100% to the Key Energy
+ *    treasury; corridor 0.1–0.5%. Never charged on plain transfers.
  */
 interface ISettlement {
     /// @notice Routing buckets for fee distribution.
     struct FeeRecipients {
-        address treasury; // 40%
-        address team; // 20%
-        address ecosystem; // 25%
-        address insurance; // 15%
+        address treasury; // Key Energy treasury: mint share + settlement fee
+        address team; // unused since 18.10.2026 (kept for storage layout)
+        address ecosystem; // unused since 18.10.2026 (kept for storage layout)
+        address insurance; // network insurance reserve: 1% of every mint
     }
 
     /// @notice A participant settled energy with a provider.
@@ -46,21 +45,19 @@ interface ISettlement {
     );
     /// @notice A participant was placed into (or removed from, vppId == 0) a VPP perimeter.
     event ParticipantVPPSet(address indexed participant, bytes32 indexed vppId);
-    /// @notice Fees were distributed to the four recipients.
-    event FeesDistributed(uint256 treasuryAmt, uint256 teamAmt, uint256 ecosystemAmt, uint256 insuranceAmt);
+    /// @notice A settlement fee was paid to the Key Energy treasury.
+    event SettlementFeePaid(address indexed treasury, uint256 amount);
     /// @notice Fee recipients were updated.
     event FeeRecipientsUpdated(FeeRecipients recipients);
     /// @notice Settlement fee bps was changed.
     event SettlementFeeBpsUpdated(uint256 newBps);
-    /// @notice Minting fee bps was changed.
-    event MintingFeeBpsUpdated(uint256 newBps);
 
     /// @notice Caller is not the MintingEngine.
     error NotMintingEngine();
     /// @notice Provided address is the zero address.
     error ZeroAddress();
-    /// @notice Fee bps exceeds protocol-wide ceiling (10_000 = 100%).
-    error FeeBpsTooHigh(uint256 bps);
+    /// @notice Settlement fee outside the constitutional corridor (10–50 bps).
+    error SettlementFeeOutOfCorridor(uint256 bps);
     /// @notice Settling 0 tokens is not allowed.
     error AmountZero();
     /// @notice Allowance/balance insufficient for the requested settle amount.
@@ -102,27 +99,15 @@ interface ISettlement {
      */
     function crossVPPSettle(address receiver, bytes32 counterpartyVPPId, uint256 tokenAmount) external;
 
-    /**
-     * @notice Distribute a minting fee that MintingEngine has just minted into this contract.
-     * @dev MintingEngine mints `feeAmount` to Settlement as part of the mint itself,
-     *      then calls this to route it to the fee recipients.
-     * @param feeAmount The fee portion of the mint, already held by Settlement.
-     */
-    function distributeMintingFee(uint256 feeAmount) external;
-
     /// @notice Update fee distribution recipients (admin).
     function setFeeRecipients(FeeRecipients calldata recipients) external;
 
-    /// @notice Update settlement fee in basis points (admin). Capped at MAX_FEE_BPS.
+    /// @notice Update settlement fee in basis points (admin), only inside the 10–50 bps corridor.
     function setSettlementFeeBps(uint256 newBps) external;
-
-    /// @notice Update minting fee in basis points (admin). Capped at MAX_FEE_BPS.
-    function setMintingFeeBps(uint256 newBps) external;
 
     /// @notice View current fee recipients.
     function feeRecipients() external view returns (FeeRecipients memory);
 
     /// @notice View current fee bps.
     function settlementFeeBps() external view returns (uint256);
-    function mintingFeeBps() external view returns (uint256);
 }

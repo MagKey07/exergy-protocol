@@ -19,7 +19,6 @@ import { ethers } from "hardhat";
 import { loadFixture, time } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import {
   BPS_DENOMINATOR,
-  FEE_SPLIT,
   ONE_TOKEN,
   netOfMintFee,
   SETTLEMENT_FEE_BPS,
@@ -89,9 +88,9 @@ describe("Integration: end-to-end happy path", () => {
     await settlement.connect(alice).settleEnergy(await bob.getAddress(), principal, 50n * KWH); // index 1.0 → 50 kWh for 50 notes
 
     expect(await token.balanceOf(await bob.getAddress())).to.equal(principal);
-    expect((await token.balanceOf(await treasury.getAddress())) - treasuryBefore).to.equal((fee * FEE_SPLIT.treasury) / BPS_DENOMINATOR);
-    expect((await token.balanceOf(await team.getAddress())) - teamBefore).to.equal((fee * FEE_SPLIT.team) / BPS_DENOMINATOR);
-    expect((await token.balanceOf(await ecosystem.getAddress())) - ecosystemBefore).to.equal((fee * FEE_SPLIT.ecosystem) / BPS_DENOMINATOR);
+    expect((await token.balanceOf(await treasury.getAddress())) - treasuryBefore).to.equal(fee);
+    expect((await token.balanceOf(await team.getAddress())) - teamBefore).to.equal(0n);
+    expect((await token.balanceOf(await ecosystem.getAddress())) - ecosystemBefore).to.equal(0n);
 
     // ----- Step 7: a note travels to another VPP — no wire needed ---------
     const moved = 10n * ONE_TOKEN;
