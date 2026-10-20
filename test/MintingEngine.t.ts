@@ -145,7 +145,7 @@ describe("MintingEngine", () => {
       await mintAs(
         mintingEngine,
         await oracleRouter.getAddress(),
-        deviceId,
+        ethers.id("device-bulk-2"), // a new battery: new stock (growth rule 20.10.2026)
         await vppA.getAddress(),
         100n
       );
@@ -159,7 +159,7 @@ describe("MintingEngine", () => {
       // applies from the next packet on.
       expect(minted).to.equal(netOfMintFee(100n * ONE_TOKEN));
       const balanceBeforeNext = await token.balanceOf(await vppA.getAddress());
-      await mintAs(mintingEngine, await oracleRouter.getAddress(), deviceId, await vppA.getAddress(), 100n);
+      await mintAs(mintingEngine, await oracleRouter.getAddress(), ethers.id("device-bulk-3"), await vppA.getAddress(), 100n);
       expect((await token.balanceOf(await vppA.getAddress())) - balanceBeforeNext).to.equal(netOfMintFee(50n * ONE_TOKEN));
     });
 
@@ -180,7 +180,7 @@ describe("MintingEngine", () => {
         mintAs(
           mintingEngine,
           await oracleRouter.getAddress(),
-          deviceId,
+          ethers.id("halving-device-2"),
           await vppA.getAddress(),
           100n
         )
@@ -209,7 +209,7 @@ describe("MintingEngine", () => {
       await mintAs(
         mintingEngine,
         await oracleRouter.getAddress(),
-        deviceId,
+        ethers.id("multi-era-device-2"),
         await vppA.getAddress(),
         2_000_000n
       );
@@ -339,7 +339,7 @@ describe("MintingEngine", () => {
       await mintAs(
         mintingEngine,
         await oracleRouter.getAddress(),
-        ethers.id("d"),
+        ethers.id("d2"),
         await vppA.getAddress(),
         25n
       );
@@ -518,14 +518,14 @@ describe("MintingEngine", () => {
       const vppAddr = await vppA.getAddress();
       const oracleAddr = await oracleRouter.getAddress();
 
-      // Packet 1: lifetime cycles = 1, kWh = 50 (within capacity).
-      await mintAsWithCycles(mintingEngine, oracleAddr, deviceId, vppAddr, 50n, 1, CAPACITY);
+      // Packet 1: lifetime cycles = 1, kWh = 50, battery at 50%.
+      await mintAsWithCycles(mintingEngine, oracleAddr, deviceId, vppAddr, 50n, 1, CAPACITY, 50);
       // Packet 2: cycles advanced by 2 (== MAX_CYCLES_PER_EPOCH for same epoch),
-      // kWh 80 (≤ capacity * 2 = 200). Should pass.
-      await mintAsWithCycles(mintingEngine, oracleAddr, deviceId, vppAddr, 80n, 3, CAPACITY);
+      // kWh 80 (≤ capacity * 2 = 200), battery now at 100%. Should pass.
+      await mintAsWithCycles(mintingEngine, oracleAddr, deviceId, vppAddr, 80n, 3, CAPACITY, 100);
 
-      // Both packets minted; total balance = 130 tokens (era 0, 1:1 rate).
-      expect(await token.balanceOf(vppAddr)).to.equal(netOfMintFee(50n * ONE_TOKEN) + netOfMintFee(80n * ONE_TOKEN));
+      // Both packets pass. Growth rule: notes only for the stock growth, 50 + 50 kWh.
+      expect(await token.balanceOf(vppAddr)).to.equal(netOfMintFee(50n * ONE_TOKEN) + netOfMintFee(50n * ONE_TOKEN));
       const state = await mintingEngine.getDeviceCycleState(deviceId);
       expect(state.lastCumulativeCycles).to.equal(3);
       expect(state.storageCapacity).to.equal(CAPACITY * ONE_TOKEN);

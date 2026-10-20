@@ -19,9 +19,12 @@ import {ISettlement} from "./interfaces/ISettlement.sol";
  *
  * @dev READ CORE_THESIS.md BEFORE EDITING.
  *
- * Mint formula (per Technical_Blueprint §5):
- *   tokensMinted_wei = kwhAmount * RATE_BASE_WEI / (2 ** era)
+ * Mint formula (per Technical_Blueprint §5, growth rule 20.10.2026):
+ *   mintKwh          = min(kwhAmount, max(0, chargeNow - highestChargeEver))
+ *   tokensMinted_wei = mintKwh * RATE_BASE_WEI / (2 ** era)
  *   where RATE_BASE_WEI = 1e18 (era 0 = 1 token / kWh).
+ *   Only energy that grows the stock mints; recharging to a level already reached
+ *   mints nothing (daily cycling is paid by settlement, not by issuance).
  *
  * Halving rule (per spec §5):
  *   Era advances when totalSupply >= halvingThreshold * (era + 1).
@@ -157,9 +160,16 @@ contract MintingEngine is
     ///         in which case the early share applies.
     uint64 public mintShareStart;
 
+    /// @notice Highest charge (kWh, 18-dec) each device has ever reported. Notes are minted
+    ///         only for charge ABOVE this mark: energy that grew the stock. Recharging a
+    ///         battery back to a level it already reached mints nothing — daily cycling is
+    ///         paid by the market (settlement), not by issuance (decided 20.10.2026).
+    mapping(bytes32 => uint256) private _deviceMaxHeld;
+
     /// @dev Reserved storage gap for upgradeable layout safety.
-    /// @dev DECREMENTED 40 → 39 for `_deviceCycleState`, 39 → 38 for `mintShareStart`.
-    uint256[38] private __gap;
+    /// @dev DECREMENTED 40 → 39 for `_deviceCycleState`, 39 → 38 for `mintShareStart`,
+    ///      38 → 37 for `_deviceMaxHeld`.
+    uint256[37] private __gap;
 
     // ---------------------------------------------------------------------
     // Initializer
@@ -274,23 +284,44 @@ contract MintingEngine is
             bool initialCharge = firstPacket && previouslyHeld == 0 && attestedHeld > 0;
             if (attestedHeld > previouslyHeld && !initialCharge) revert ChargeRiseWithoutEnergy(previouslyHeld, attestedHeld);
             _syncDeviceStoredEnergy(deviceId, storageCapacity, chargeLevelPercent);
+            if (attestedHeld > _deviceMaxHeld[deviceId]) _deviceMaxHeld[deviceId] = attestedHeld;
             if (initialCharge) emit InitialChargeRegistered(deviceId, vppAddress, attestedHeld, totalVerifiedEnergyInStorage);
             else emit StateOfChargeReported(deviceId, vppAddress, attestedHeld, totalVerifiedEnergyInStorage);
             return 0;
         }
 
+        // -------- MINT ONLY FOR GROWTH OF THE STOCK (decided 20.10.2026) --------
+        // Notes are minted only for the part of this charge that lifts the device above
+        // the highest charge it has ever held. Recharging back to a level already reached
+        // adds nothing to the stock, so it mints nothing: otherwise notes would multiply
+        // with every daily cycle while the stock stays the same, and the energy behind
+        // every note would fall. Never more than the new energy in this packet.
+        if (chargeLevelPercent > 100) revert InvalidChargeLevel(chargeLevelPercent);
+        uint256 nowHeld = (storageCapacity * uint256(chargeLevelPercent)) / 100;
+        uint256 highWater = _deviceMaxHeld[deviceId];
+        uint256 lastHeld = _deviceCycleState[deviceId].lastReportedEnergy;
+        if (lastHeld > highWater) highWater = lastHeld; // devices connected before this rule
+        uint256 growthKwh = nowHeld > highWater ? nowHeld - highWater : 0;
+        uint256 mintKwh = growthKwh < kwhAmount ? growthKwh : kwhAmount;
+
         uint256 era = currentEra;
         uint256 rate = _rateForEra(era);
-        // SCALING: kwhAmount is 18-decimal (1 kWh = 1e18), rate is 18-decimal (1 token/kWh = 1e18).
+        // SCALING: mintKwh is 18-decimal (1 kWh = 1e18), rate is 18-decimal (1 token/kWh = 1e18).
         // Naive multiplication produces 36-decimal output. Divide by 1e18 to keep token supply
         // in canonical 18-decimal ERC-20 wei units.
-        tokensMinted = (kwhAmount * rate) / 1e18;
-        if (tokensMinted == 0) revert MintAmountZero();
+        tokensMinted = (mintKwh * rate) / 1e18;
+        if (nowHeld > highWater) _deviceMaxHeld[deviceId] = nowHeld;
+        if (tokensMinted == 0) {
+            // No growth: the charge still reaches the pool, nothing is minted.
+            _syncDeviceStoredEnergy(deviceId, storageCapacity, chargeLevelPercent);
+            emit StateOfChargeReported(deviceId, vppAddress, nowHeld, totalVerifiedEnergyInStorage);
+            return 0;
+        }
 
         // Apply state.
         EpochData storage e = _epochs[epoch];
         if (e.sealed_) revert EpochAlreadySealed(epoch);
-        e.totalVerifiedKwh += kwhAmount;
+        e.totalVerifiedKwh += mintKwh;
         e.totalTokensMinted += tokensMinted;
 
         // POOL ACCOUNTING (see docs/TECH_DEBT_pool_accounting.md).
@@ -320,7 +351,7 @@ contract MintingEngine is
         }
         token.mint(vppAddress, tokensMinted - toTreasury - toReserve);
 
-        emit EnergyMinted(deviceId, vppAddress, kwhAmount, tokensMinted, epoch, era);
+        emit EnergyMinted(deviceId, vppAddress, mintKwh, tokensMinted, epoch, era);
 
         // Lazy halving check after mint. May advance multiple eras at once.
         _checkAndAdvanceHalving();
@@ -330,6 +361,13 @@ contract MintingEngine is
         if (toTreasury + toReserve > 0) {
             emit MintSharesDistributed(treasury, toTreasury, reserve, toReserve);
         }
+    }
+
+    /// @notice Highest charge a device has reported; notes mint only above it.
+    function deviceMaxHeld(bytes32 deviceId) external view returns (uint256) {
+        uint256 m = _deviceMaxHeld[deviceId];
+        uint256 last = _deviceCycleState[deviceId].lastReportedEnergy;
+        return last > m ? last : m;
     }
 
     /// @notice Key Energy's share of a mint right now, in bps of the minted amount.

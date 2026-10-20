@@ -518,7 +518,7 @@ For dispute and audit trails, every accepted packet emits `MeasurementVerified` 
 | Revert | Trigger | Fix |
 |---|---|---|
 | `NotOracleRouter()` | Calling `commitVerifiedEnergy` directly. | Don't. Always go through OracleRouter. |
-| `MintAmountZero()` | `(kwhAmount * rate) / 1e18 == 0`. | At Era ≥ 64 the rate is 0; before that, ensure `kwhAmount * rate >= 1e18`. |
+| `MintAmountZero()` | No longer raised (20.10.2026). A charge that adds no growth above the device's highest charge, or growth worth zero notes, is recorded as a state-of-charge report and mints nothing. | Nothing to do: the charge still reaches the pool. |
 | `EpochAlreadySealed(uint256)` | Submitting into an epoch that an admin sealed. | Admin-only state; rare in normal operation. Wait for the next epoch. |
 | `ProofOfWearViolation(uint256 cyclesDelta, uint256 maxAllowed)` | `cyclesDelta > 2 * (epochsDelta + 1)`. | Reduce `cumulativeCycles` increment per packet, or wait additional epochs to accumulate budget. |
 | `CycleCounterRegression(uint32 prior, uint32 attested)` | `cumulativeCycles` decreased. | Don't reset device firmware counters. If a device was replaced, register as a new deviceId. |

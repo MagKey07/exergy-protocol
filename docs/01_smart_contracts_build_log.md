@@ -197,7 +197,7 @@ These should be expressed as Hardhat / Foundry tests:
 - I-M1: With `halvingThresholdTokens=1`, after a 1 kWh mint at era 0, era advances to 1; next 1 kWh mints 0.5 token.
 - I-M2: A mint of size N*halvingThreshold immediately advances era by N (multi-cross via while-loop).
 - I-M3: `currentMintRateWeiPerKwh()` returns `1e18 >> era` exactly.
-- I-M4: At era ≥ 60, mint reverts with `MintAmountZero` for small batches.
+- I-M4: At era ≥ 60, mint reverts with `MintAmountZero` for small batches. *(Superseded 20.10.2026: growth rule — zero-note growth is recorded without minting, no revert.)*
 - I-M5: Total minted equals `sum(epoch.totalTokensMinted)` for all epochs.
 
 **MintingEngine — floating index:**

@@ -115,7 +115,9 @@ describe("Integration: end-to-end happy path", () => {
     await oracleRouter.submitMeasurement(next, devSig2, vppSig2);
 
     expect(await mintingEngine.totalVerifiedEnergyInStorage()).to.equal(250n * KWH);
-    expect(await token.totalSupply()).to.equal(supplyBefore + 1n * ONE_TOKEN); // only the new mint
+    // Growth rule (20.10.2026): the battery is below its highest charge, so this charge
+    // adds nothing to the stock and mints nothing. Supply is unchanged; nothing burns.
+    expect(await token.totalSupply()).to.equal(supplyBefore);
     expect(await mintingEngine.getFloatingIndex()).to.be.lt(ONE_TOKEN);
 
     // ----- Final invariant: balances add up to supply (no leak, no burn) --
@@ -171,16 +173,16 @@ describe("Integration: end-to-end happy path", () => {
       lastTimestamp += 60;
       const p = makePacket({
         deviceId,
-        kwhAmount: 100n * KWH,
+        kwhAmount: 20n * KWH,
         storageCapacity: 100n * KWH,
-        chargeLevelPercent: 100,
+        chargeLevelPercent: 20 * (i + 1), // the stock grows by 20 kWh each time
         timestamp: lastTimestamp,
         cumulativeCycles: i + 1,
       });
       const ds = await signDevice(p, device);
       const vs = await signVpp(p, ds, vppCloud);
       await sys.oracleRouter.submitMeasurement(p, ds, vs);
-      totalMinted += 100n * ONE_TOKEN;
+      totalMinted += 20n * ONE_TOKEN;
     }
 
     expect(await sys.token.totalSupply()).to.equal(totalMinted);
