@@ -30,7 +30,7 @@ interface IOracleRouter {
         uint64 timestamp;
         uint256 storageCapacity;
         uint8 chargeLevelPercent;
-        uint8 sourceType; // 0=solar, 1=wind, 2=hydro, 3=other
+        uint8 sourceType; // 0=solar, 1=wind, 2=hydro, 3=other, 4=grid (own cost)
         uint32 cumulativeCycles;
     }
 

@@ -166,9 +166,9 @@ export async function deployFullSystem(): Promise<DeployedSystem> {
   const RELAYER_ROLE = await oracleRouter.CHAINLINK_RELAYER_ROLE();
   await oracleRouter.connect(governor).grantRole(RELAYER_ROLE, await deployer.getAddress());
 
-  // Energy sources whose stored energy may mint: solar (0), wind (1), hydro (2).
-  // "Other" (3) stays off the list; grid power has no source code at all.
-  for (const source of [0, 1, 2]) {
+  // Energy sources whose stored energy may mint: solar (0), wind (1), hydro (2),
+  // grid at own cost (4, decided 04.11.2026). "Other" (3) stays off the list.
+  for (const source of [0, 1, 2, 4]) {
     await oracleRouter.connect(governor).setAllowedSource(source, true);
   }
 

@@ -92,6 +92,13 @@ contract OracleRouter is
     /// @dev Appended in the source-check upgrade; takes one slot from `__gap`.
     mapping(bytes32 => uint8) private _deviceSourcePlusOne;
 
+    /// @notice Source code for energy charged from the public grid at the participant's own
+    ///         cost (decided 04.11.2026). It is new energy for the network, paid for, so it
+    ///         mints like own generation, and only above the battery's high-water mark.
+    ///         It is accepted on any device whatever source the device is bound to: one
+    ///         battery may charge from its panels and from the grid.
+    uint8 public constant SOURCE_GRID = 4;
+
     /// @notice Energy sources whose stored energy may mint notes. A list, not code:
     ///         adding a new source (e.g. green hydrogen) is one admin call, not a redeploy.
     /// @dev Appended in the source-check upgrade; takes one slot from `__gap`.
@@ -192,7 +199,8 @@ contract OracleRouter is
     }
 
     /// @notice Add or remove an energy source from the list whose stored energy may mint.
-    ///         Grid power is not a source code at all; "other" (3) stays off the list.
+    ///         Grid power is SOURCE_GRID (4); "other" (3) stays off the list. Which sources
+    ///         mint is the list the connected communities will vote on.
     function setAllowedSource(uint8 sourceType, bool allowed) external onlyRole(DEFAULT_ADMIN_ROLE) {
         _allowedSource[sourceType] = allowed;
         emit AllowedSourceSet(sourceType, allowed);
@@ -226,7 +234,7 @@ contract OracleRouter is
         if (packet.kwhAmount > 0) {
             if (!_allowedSource[packet.sourceType]) revert SourceNotAllowed(packet.sourceType);
             uint8 bound = _deviceSourcePlusOne[packet.deviceId];
-            if (bound != 0 && packet.sourceType != bound - 1) {
+            if (bound != 0 && packet.sourceType != bound - 1 && packet.sourceType != SOURCE_GRID) {
                 revert SourceMismatch(packet.deviceId, bound - 1, packet.sourceType);
             }
         }

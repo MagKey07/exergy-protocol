@@ -118,9 +118,18 @@ describe("OracleRouter", () => {
         .withArgs(deviceId, 0, 1);
     });
 
+    it("ACCEPTS grid charging at own cost (4) on a device bound to solar — decided 04.11.2026", async () => {
+      const { oracleRouter, governor, device, vppCloud, deviceId } = await setupRegisteredDevice();
+      await oracleRouter.connect(governor).setDeviceSource(deviceId, 0); // solar
+      const packet = makePacket({ deviceId, kwhAmount: 100n, sourceType: 4 });
+      const devSig = await signDevice(packet, device);
+      const vppSig = await signVpp(packet, devSig, vppCloud);
+      await expect(oracleRouter.submitMeasurement(packet, devSig, vppSig)).to.emit(oracleRouter, "MeasurementVerified");
+    });
+
     it("a new source joins by one admin call, no redeploy", async () => {
       const { oracleRouter, governor, device, vppCloud, deviceId } = await setupRegisteredDevice();
-      const HYDROGEN = 4;
+      const HYDROGEN = 6;
       const packet = makePacket({ deviceId, kwhAmount: 100n, sourceType: HYDROGEN });
       const devSig = await signDevice(packet, device);
       const vppSig = await signVpp(packet, devSig, vppCloud);
