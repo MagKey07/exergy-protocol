@@ -186,6 +186,14 @@ The form is intentionally a checklist, not prose. A project manager must be able
   - Re-audit doc path: `__________`
   - Final score: `____ Aligned, ____ Drift, ____ Violations`
 
+### E.1 Mint rules decided 2026-11-04 (CORE_THESIS, block "РЕШЕНИЕ МАГА: РОЗЕТКА ДАЁТ НОТЫ") — not yet in code
+Testnet is safe only because Key Energy registers every device by hand. Each item is a mainnet BLOCKER.
+- [ ] **Energy received from another participant mints nothing.** Today `commitVerifiedEnergy` mints for any charge above the device's high-water mark, whatever its origin. Packet must carry the kWh that came from community members (from the community's quarter-hour allocation data, co-signed by the VPP); mint = min(growth above high-water, kwhAmount − kwhFromMembers). Received kWh still lift the high-water mark.
+- [ ] **Grid charging mints (reversal of 17.10 rule).** Charge from the grid at own cost above the high-water mark mints like own generation. Remove the device-level `sourceType` gate for minting or reduce it to a label; update constitution text "grid power mints nothing" → "energy received from another participant mints nothing".
+- [ ] **No mint outside a community of ≥2 independent participants.** Independent = own metering point at the grid operator; all devices behind one metering point = one participant. Mint reverts if the device's VPP has fewer than 2.
+- [ ] **Two measuring points per site** (Petro/Kevin meter chain): battery input + generation output. Integration requirement, not contract code; packet format must allow both.
+- [ ] **Admission by community vote** in ProtocolGovernance: independent verifier signs grid-operator registration → double majority (communities and stored energy) → ~1 month timelock. Whether a renewable source is required is decided by that vote, not hard-coded. Today GOVERNOR_ROLE = Key Energy key.
+
 ---
 
 ## Sign-off
