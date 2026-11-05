@@ -17,14 +17,33 @@
 //
 // Keys and state live outside the repository: ~/.secrets/exergy_pilot_devices.json.
 //
-// Usage:
-//   SUPABASE_SERVICE_KEY=… npx hardhat run --network arbitrumSepolia scripts/pilot-relay.ts
-//   DRY_RUN=1 … (prints the packets, sends nothing)
+// Plain ethers, no Hardhat, so it runs on a small server every hour:
+//   SUPABASE_SERVICE_KEY=… PRIVATE_KEY=… node --experimental-strip-types scripts/pilot-relay.ts
+//   NETWORK=arbitrumSepolia (default) reads deployments/<NETWORK>.json; RPC_URL overrides the RPC.
+//   DRY_RUN=1 prints the packets and sends nothing. PILOT_STATE_FILE overrides the state file.
 
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { ethers, network } from "hardhat";
+import { ethers } from "ethers";
+
+const NETWORK = process.env.NETWORK ?? "arbitrumSepolia";
+const RPC_URL = process.env.RPC_URL ?? (NETWORK === "localhost" ? "http://127.0.0.1:8545" : "https://sepolia-rollup.arbitrum.io/rpc");
+const DEPLOYMENTS = process.env.DEPLOYMENTS_DIR ?? path.resolve(import.meta.dirname, "../deployments");
+const PACKET_ABI = "(bytes32 deviceId,uint256 kwhAmount,uint64 timestamp,uint256 storageCapacity,uint8 chargeLevelPercent,uint8 sourceType,uint32 cumulativeCycles)";
+const ROUTER_ABI = [
+  "function registerDevice(bytes32 deviceId, address vppAddress, bytes32 devicePubKeyHash)",
+  `function submitMeasurement(${PACKET_ABI} packet, bytes deviceSignature, bytes vppSignature)`,
+  "error InvalidDeviceSignature()", "error InvalidVPPSignature()", "error DuplicateMeasurement(bytes32)",
+  "error TimestampOutOfWindow()", "error SourceNotAllowed(uint8)", "error DeviceNotRegistered(bytes32)",
+];
+const GOV_ABI = ["function registerVPP(bytes32 vppId, address operatorAddress)"];
+const ENGINE_ABI = [
+  "function totalVerifiedEnergyInStorage() view returns (uint256)", "function totalTokensMinted() view returns (uint256)",
+  "function getFloatingIndex() view returns (uint256)",
+  "error ProofOfWearViolation(uint256,uint256)", "error EnergyExceedsCapacity(uint256,uint256)",
+  "error ChargeRiseWithoutEnergy(uint256,uint256)", "error CapacityShrinkRejected(uint256,uint256)",
+];
 
 const WAD = 10n ** 18n;
 const SUPABASE = "https://dgqozsxkqqfbvthibvhs.supabase.co/rest/v1";
@@ -69,10 +88,12 @@ function devicePubKeyHash(pk: string) {
 }
 
 async function main() {
-  const book = JSON.parse(fs.readFileSync(path.resolve(__dirname, `../deployments/${network.name}.json`), "utf-8"));
-  const router = await ethers.getContractAt("OracleRouter", book.contracts.OracleRouter);
-  const governance = await ethers.getContractAt("ProtocolGovernance", book.contracts.ProtocolGovernance);
-  const engine = await ethers.getContractAt("MintingEngine", book.contracts.MintingEngine);
+  const book = JSON.parse(fs.readFileSync(path.join(DEPLOYMENTS, `${NETWORK}.json`), "utf-8"));
+  if (!process.env.PRIVATE_KEY) throw new Error("PRIVATE_KEY is not set");
+  const signer = new ethers.NonceManager(new ethers.Wallet(process.env.PRIVATE_KEY, new ethers.JsonRpcProvider(RPC_URL)));
+  const router = new ethers.Contract(book.contracts.OracleRouter, [...ROUTER_ABI, ...ENGINE_ABI.filter((x) => x.startsWith("error"))], signer);
+  const governance = new ethers.Contract(book.contracts.ProtocolGovernance, GOV_ABI, signer);
+  const engine = new ethers.Contract(book.contracts.MintingEngine, [...ENGINE_ABI, ...ROUTER_ABI.filter((x) => x.startsWith("error"))], signer);
   const state: State = fs.existsSync(STATE_FILE) ? JSON.parse(fs.readFileSync(STATE_FILE, "utf-8")) : {};
   const save = () => { if (!DRY) { fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 1)); fs.chmodSync(STATE_FILE, 0o600); } };
 
@@ -84,9 +105,12 @@ async function main() {
     const names = [...new Set(batteries.map((b) => b.battery))];
     if (!names.length) continue;
 
+    // A community is admitted once, by the network's governor (GOVERNOR_ROLE), not by this relay.
+    // REGISTER_COMMUNITIES=1 lets an admin run register new ones.
     const com = (state[s.name] ??= { cloudKey: ethers.Wallet.createRandom().privateKey, registered: false, devices: {} });
     const cloud = new ethers.Wallet(com.cloudKey);
     if (!com.registered) {
+      if (!process.env.REGISTER_COMMUNITIES) { console.log(`skip ${s.name}: community not admitted yet`); continue; }
       console.log(`register community ${s.name} (cloud ${cloud.address})`);
       if (!DRY) { await (await governance.registerVPP(ethers.id(`pilot:${s.name}`), cloud.address)).wait(); com.registered = true; save(); }
     }
