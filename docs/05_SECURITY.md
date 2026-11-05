@@ -31,7 +31,7 @@ If you are an investor reading this and thinking "that's a problem" — it is no
 | Governor key compromise | Production: multi-sig (Safe) + 48h timelock. MVP: deployer EOA. |
 | Re-entrancy on Settlement | OZ ReentrancyGuard expected on Settlement; **must be confirmed in audit** |
 | Gas griefing on Oracle | Per-call gas limit + signature pre-check expected; **must be confirmed in audit** |
-| MEV on first listing | Liquidity bootstrapping plan for DEX listing — not part of MVP |
+| MEV on exchange of notes | Not applicable to Key Energy: the company never sells or lists notes |
 
 ## 2. Why testnet only — the explicit list
 

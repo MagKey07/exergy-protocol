@@ -2,9 +2,9 @@
 
 **Audience:** Senior backend engineer at a VPP operator integrating their existing solar+battery cloud against the Exergy protocol on Arbitrum Sepolia testnet.
 
-**Goal:** by the end of this guide, your VPP cloud submits signed measurement packets to the protocol, mints `$XRGY` tokens against verified energy in your batteries, and you can read live network state from the deployed contracts.
+**Goal:** by the end of this guide, your VPP cloud submits signed measurement packets to the protocol, receives notes (the `XRGYToken` contract) for new energy stored in your batteries, and you can read live network state from the deployed contracts.
 
-**Phase 0 status:** all five contracts are deployed and verified on Arbitrum Sepolia. The protocol mints, distributes fees, and rejects malformed packets exactly per the spec. Mainnet launch follows a tier-1 audit (planned Q3-Q4 2026).
+**Phase 0 status:** all five contracts are deployed and verified on Arbitrum Sepolia. The protocol mints, distributes fees, and rejects malformed packets exactly per the spec. Mainnet follows a security audit.
 
 ---
 
@@ -43,9 +43,9 @@ That data is enough. The integration is a thin connector that:
 3. Produces two signatures — one from a per-device key, one from your VPP cloud signing key.
 4. Submits the dual-signed packet to a single on-chain function on Arbitrum Sepolia.
 
-Each successful submission mints `$XRGY` to your VPP cloud wallet at the current era's rate (1.0 token per kWh in Era 0, halving every 1M tokens minted globally). The protocol pulls a 1% fee from the mint. Everything else stays in your wallet.
+Notes are minted only for energy that lifts a device above the highest charge it has ever held: 1 note per kWh in Era 0, halving every 1M notes minted network-wide. Recharging to a level already reached mints nothing, but the charge still updates the network's stock. Of each mint, 89% goes to your VPP wallet, 10% to the Key Energy treasury (5% after four years) and 1% to the insurance reserve. A packet with `kwhAmount = 0` reports the state of charge at any time, so a discharge lowers the figure on every note at once.
 
-**No customer-facing changes are required to integrate.** The token economy is opt-in for your operators. You can run shadow-mode integration parallel to your existing pipeline indefinitely.
+**No customer-facing changes are required to integrate.** Notes are opt-in for your operators. You can run shadow-mode integration parallel to your existing pipeline indefinitely.
 
 ---
 
@@ -58,7 +58,7 @@ Five contracts, all deployed on Arbitrum Sepolia at the addresses below. Four of
 | **XRGYToken** | `0x8557e39A372FAC1811b2171207B669975B648fDB` | ERC-20 + EIP-2612 permit. The note: denominated in kWh, backed by measured stored energy network-wide. |
 | **OracleRouter** | `0x43F2c96AE8f866C181b4ce97966Bd4e4a36AE2e5` | Receives measurement packets, verifies dual signatures, forwards to engine. |
 | **MintingEngine** | `0x223cEf9882f5F7528CCC4521773683B83723B5A4` | Validates Proof-of-Wear, mints tokens, advances eras at halving thresholds. |
-| **Settlement** | `0xBaFe8D465F9D7fCab723e41c0bA13D328b2E4C9C` | Pulls 1% fee on each mint, handles peer-to-peer settlement. |
+| **Settlement** | `0xBaFe8D465F9D7fCab723e41c0bA13D328b2E4C9C` | Handles peer-to-peer settlement in notes; takes the 0.25% settlement fee. |
 | **ProtocolGovernance** | `0x6444902f410aFd866BDA058d64C596ad4Aa1ad70` | VPP registry, protocol-wide pause, upgrade gate. |
 
 **Network:** Arbitrum Sepolia (chainId `421614`). Public RPC: `https://sepolia-rollup.arbitrum.io/rpc`. Block explorer: `https://sepolia.arbiscan.io/`.
@@ -87,7 +87,7 @@ You will interact with three contracts during integration:
 A single Ethereum wallet that will:
 
 - Co-sign every measurement packet from your fleet.
-- Be the recipient of every minted `$XRGY` token (net of the mint split: 10% Key Energy treasury — 5% after four years — and 1% insurance reserve, taken at mint time).
+- Be the recipient of every minted note (net of the mint split: 10% Key Energy treasury — 5% after four years — and 1% insurance reserve, taken at mint time).
 - Hold `CHAINLINK_RELAYER_ROLE` on OracleRouter (granted by protocol admin during onboarding — see §4).
 
 Generate this wallet **once** and protect it. In production, this is an HSM key or a cloud KMS key. In testnet you can use any 32-byte private key. The address must be stable across your fleet — every device's `MeasurementPacket` will be co-signed by this single VPP key.
@@ -189,11 +189,11 @@ const devicePubKeyHash = ethers.solidityPackedKeccak256(
 
 Equivalent in Solidity terms: `keccak256(abi.encodePacked(deviceAddress))`. If you instead hash the raw public key bytes, every packet from that device will revert with `InvalidDeviceSignature` and you will spend two days debugging.
 
-In Phase 1 (Q3-Q4 2026), self-service device registration via signed off-chain claims is on the roadmap — your VPP cloud will be able to register devices in batches without admin involvement.
+Before mainnet, self-service device registration via signed off-chain claims is on the roadmap — your VPP cloud will be able to register devices in batches without admin involvement.
 
 ### Wallet Architecture: Your Choice
 
-Exergy is neutral to how your VPP organizes ownership. The `vppAddress` parameter you provide when registering each device determines where minted $XRGY tokens go for that device. Different VPPs use different models:
+Exergy is neutral to how your VPP organizes ownership. The `vppAddress` parameter you provide when registering each device determines where minted notes go for that device. Different VPPs use different models:
 
 **Single corporate wallet (Phase 0 pilot default — simplest).**
 Register all devices under one wallet your VPP entity controls. Mints accumulate in that wallet. You distribute to participants off-chain — via DAO governance, transparent ledger, internal accounting, or whatever fits your community structure. This is the simplest onboarding model and works well for cooperatives, aggregators, and pilot deployments.
@@ -552,7 +552,7 @@ The protocol is fully working on Arbitrum Sepolia. It is not yet on mainnet. Her
 ### 10.2 Permissioned device registration
 
 - **Now:** `registerDevice` is `DEVICE_REGISTRAR_ROLE`-gated, currently admin-only. VPPs submit a list of devices to the protocol team for batch registration.
-- **Production:** self-service registration via signed off-chain claims, batched on-chain by the VPP itself. Roadmap Q3-Q4 2026.
+- **Production:** self-service registration via signed off-chain claims, batched on-chain by the VPP itself. Before mainnet.
 
 ### 10.3 Minting fee
 
@@ -577,7 +577,7 @@ The protocol is fully working on Arbitrum Sepolia. It is not yet on mainnet. Her
 ### 10.7 No real fiat off-ramp
 
 - **Now:** `$XRGY` exists on Arbitrum Sepolia. There is no DEX listing, no centralized exchange, no fiat off-ramp. Trades are between accounts on testnet.
-- **Production:** post-audit and mainnet launch, `$XRGY` will be listed on Uniswap (Arbitrum One) and at least one centralized exchange. Operators will be able to sell minted tokens for fiat through standard crypto rails.
+- **Production:** Key Energy never sells notes and does not list them. Notes pass between participants: as payment for energy, or for money between whoever needs them.
 
 ### 10.8 No subgraph
 
@@ -590,7 +590,13 @@ The protocol is fully working on Arbitrum Sepolia. It is not yet on mainnet. Her
 - Dual-signature verification, Proof-of-Wear, mint formula, halving math — all running exactly per spec.
 - Token transfers, EIP-2612 permit, fee collection (when approve is set), peer-to-peer settlement via `Settlement.settleEnergy`, cross-VPP settlement via `Settlement.crossVPPSettle` — all working.
 - Live operator-facing dashboard reading state in real time.
-- Smoke-test VPP currently minting with synthetic devices to keep the network warm; available as a reference.
+- A smoke-test VPP with synthetic devices has minted on testnet; available as a reference.
+
+---
+
+## 10a. Shadow pilot: when you cannot sign packets yourself
+
+A community without its own engineering can take part without keys or wallets: it forwards plain battery readings (time, state of charge, capacity, every 15 minutes) to `POST https://keyenergy.io/api/pilot/readings` with a key we issue. During the shadow pilot we turn them into packets and sign them ourselves (`scripts/pilot-relay.ts`): a first report brings the battery's existing charge into the stock without minting, discharges are reported hourly, and a charge is reported when the charging session ends. In a live pilot the meter signs instead. Write to info@keyenergy.io for a key and the data format.
 
 ---
 
@@ -660,15 +666,15 @@ For an engineer who wants the absolute minimum path from "nothing" to "first min
 
 1. Generate a VPP cloud wallet. Fund with 0.01 Sepolia ETH on Arbitrum.
 2. Open a Github issue requesting `CHAINLINK_RELAYER_ROLE` grant + `ProtocolGovernance.registerVPP` for your wallet, and submit a list of 1-3 test device labels for registration. Wait for confirmation (same-day).
-3. Send `XRGYToken.approve(0xBaFe...4C9C, MaxUint256)` from your VPP cloud wallet.
+3. Nothing to approve for minting: the split is taken inside the mint (§4 step 4).
 4. For one of your registered devices, generate a deterministic device key (testnet-only — see §3.3): `deviceKey = keccak256(utf8("exergy-vpp:my-name:device-0001"))`.
 5. Build a packet: 1 kWh, current timestamp, your registered storageCapacity, cumulativeCycles = 1, sourceType = 0.
 6. Sign with the device key (EIP-191 over `keccak256(abi.encode(packet))`), then sign with the VPP cloud key (EIP-191 over `keccak256(abi.encode(packetHash, deviceSignature))`).
 7. Call `OracleRouter.submitMeasurement(packet, deviceSignature, vppSignature, { gasLimit: 600_000n })`.
-8. Confirm in Arbiscan: your VPP cloud wallet's `$XRGY` balance is now `0.99` (1 token minted, 1% fee skimmed).
+8. Confirm in Arbiscan: your VPP cloud wallet's balance is now `0.89` (1 note minted for the first kWh above the device's previous maximum; 10% treasury and 1% reserve taken at mint).
 
 Total integration work for an engineer who has read this guide: approximately one engineering day to get a working pilot connector running against shadow telemetry.
 
 ---
 
-*Last updated: 2026-05-10. Phase 0 testnet. Mainnet target: Q4 2026 post-audit.*
+*Last updated: 2026-11-05. Phase 0 testnet. Mainnet after a security audit.*
