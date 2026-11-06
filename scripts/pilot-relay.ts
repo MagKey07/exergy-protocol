@@ -20,8 +20,11 @@
 //    charge came from other participants. The pilot format carries no allocation data yet, so the
 //    community states 0;
 //  • notes mint only in a community of two or more independent participants (own metering point).
-//    The format carries no grid-operator id yet, so each battery is placed behind its own point:
-//    one battery = one household. A community with one battery stores and reports, mints nothing.
+//    A battery name comes from the sender and proves nothing: one sender could invent two names and
+//    look like two households. So the relay never makes up a metering point. Key Energy confirms each
+//    battery's point by hand (grid-operator id from the community) in PILOT_POINTS_FILE,
+//    { "<sender>": { "<battery>": "<metering point id>" } }; the relay applies it only on an admin run
+//    (REGISTER_COMMUNITIES=1). Until then the battery stores and reports, and mints nothing.
 //
 // Keys and state live outside the repository: ~/.secrets/exergy_pilot_devices.json.
 //
@@ -57,6 +60,7 @@ const ENGINE_ABI = [
 const WAD = 10n ** 18n;
 const SUPABASE = "https://dgqozsxkqqfbvthibvhs.supabase.co/rest/v1";
 const STATE_FILE = process.env.PILOT_STATE_FILE ?? path.join(os.homedir(), ".secrets", "exergy_pilot_devices.json");
+const POINTS_FILE = process.env.PILOT_POINTS_FILE ?? path.join(os.homedir(), ".secrets", "exergy_pilot_points.json");
 const MAX_AGE_S = 72 * 3600 - 600;
 const MAX_CYCLES_PER_DAY = 2;
 const DRY = !!process.env.DRY_RUN;
@@ -104,6 +108,7 @@ async function main() {
   const router = new ethers.Contract(book.contracts.OracleRouter, [...ROUTER_ABI, ...ENGINE_ABI.filter((x) => x.startsWith("error"))], signer);
   const governance = new ethers.Contract(book.contracts.ProtocolGovernance, GOV_ABI, signer);
   const engine = new ethers.Contract(book.contracts.MintingEngine, [...ENGINE_ABI, ...ROUTER_ABI.filter((x) => x.startsWith("error"))], signer);
+  const points: Record<string, Record<string, string>> = fs.existsSync(POINTS_FILE) ? JSON.parse(fs.readFileSync(POINTS_FILE, "utf-8")) : {};
   const state: State = fs.existsSync(STATE_FILE) ? JSON.parse(fs.readFileSync(STATE_FILE, "utf-8")) : {};
   const save = () => { if (!DRY) { fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 1)); fs.chmodSync(STATE_FILE, 0o600); } };
 
@@ -132,9 +137,12 @@ async function main() {
         console.log(`  register battery ${name} (${deviceId.slice(0, 12)}…)`);
         if (!DRY) { await (await router.registerDevice(deviceId, cloud.address, devicePubKeyHash(dev.deviceKey))).wait(); dev.registered = true; save(); }
       }
-      if (!dev.pointSet) {
-        console.log(`  metering point for ${name}`);
-        if (!DRY) { await (await router.setDeviceMeteringPoint(deviceId, ethers.id(`pilot-point:${s.name}:${name}`))).wait(); dev.pointSet = true; save(); }
+      const point = points[s.name]?.[name];
+      if (!dev.pointSet && point && process.env.REGISTER_COMMUNITIES) {
+        console.log(`  metering point for ${name}: confirmed ${point}`);
+        if (!DRY) { await (await router.setDeviceMeteringPoint(deviceId, ethers.id(`metering-point:${point}`))).wait(); dev.pointSet = true; save(); }
+      } else if (!dev.pointSet) {
+        console.log(`  ${name}: no confirmed metering point, stores without notes`);
       }
       const device = new ethers.Wallet(dev.deviceKey);
 
