@@ -70,6 +70,17 @@ interface IOracleRouter {
     /// @notice An energy source was added to or removed from the list whose stored energy may mint notes.
     event AllowedSourceSet(uint8 indexed sourceType, bool allowed);
 
+    /// @notice A device was placed behind a metering point at the grid operator (0 = none).
+    event DeviceMeteringPointSet(bytes32 indexed deviceId, bytes32 indexed meteringPoint);
+
+    /// @notice Part of a charge was stored without minting: it came from other participants,
+    ///         or (`communityTooSmall`) the community has fewer than two independent participants
+    ///         or the device is not yet behind a metering point (decided 04.11.2026).
+    event EnergyNotMinting(bytes32 indexed deviceId, address indexed vppAddress, uint256 kwhNotMinting, bool communityTooSmall);
+
+    /// @notice The community attested more energy from other participants than the charge holds.
+    error MembersEnergyExceedsCharge(uint256 kwhFromMembers, uint256 kwhAmount);
+
     /// @notice Caller is not allowed to register devices.
     error NotDeviceRegistrar();
     /// @notice Caller is not the registered Chainlink relayer.
@@ -108,6 +119,21 @@ interface IOracleRouter {
      */
     function submitMeasurement(
         MeasurementPacket calldata packet,
+        bytes calldata deviceSignature,
+        bytes calldata vppSignature
+    ) external;
+
+    /**
+     * @notice Submit a measurement together with the community's statement of how much of the
+     *         charge came from other participants (its quarter-hour allocation data).
+     * @dev The device signs the physics, as in `submitMeasurement`. The VPP cloud, which keeps
+     *      the community's accounts, signs keccak256(abi.encode(packetHash, deviceSignature,
+     *      kwhFromMembers)): the origin of the energy is the community's attestation, not the
+     *      device's. Energy from other participants mints nothing.
+     */
+    function submitMeasurementWithOrigin(
+        MeasurementPacket calldata packet,
+        uint256 kwhFromMembers,
         bytes calldata deviceSignature,
         bytes calldata vppSignature
     ) external;

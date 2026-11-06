@@ -220,6 +220,25 @@ interface IMintingEngine {
     ) external returns (uint256 tokensMinted);
 
     /**
+     * @notice Same as `commitVerifiedEnergy`, with the part of the charge that may not mint
+     *         (decided 04.11.2026). Energy received from another participant already stands
+     *         behind that participant's notes; minting it again would issue twice for one kWh.
+     *         The router also passes the whole charge here while the device's community has
+     *         fewer than two independent participants.
+     * @param kwhNotMinting Part of `kwhAmount` that lifts the charge but mints nothing.
+     *        Capped at `kwhAmount`. It still raises the device's high-water mark.
+     */
+    function commitVerifiedEnergyWithOrigin(
+        bytes32 deviceId,
+        address vppAddress,
+        uint256 kwhAmount,
+        uint256 kwhNotMinting,
+        uint32 cumulativeCycles,
+        uint256 storageCapacity,
+        uint8 chargeLevelPercent
+    ) external returns (uint256 tokensMinted);
+
+    /**
      * @notice Settlement reports that energy left storage (consumption / discharge).
      *         Reduces totalVerifiedEnergyInStorage WITHOUT burning tokens.
      * @param kwhConsumed Quantity in integer kWh.

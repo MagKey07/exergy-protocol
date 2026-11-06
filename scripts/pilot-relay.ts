@@ -15,6 +15,14 @@
 //    charging the rise waits, and no lower report is sent above the chain level.
 //  • at most one packet per battery per hour; readings older than 72h are skipped (router window).
 //
+// Origin rules (decided 04.11.2026, OracleRouter since 06.11):
+//  • every packet goes through submitMeasurementWithOrigin; the community signs how much of the
+//    charge came from other participants. The pilot format carries no allocation data yet, so the
+//    community states 0;
+//  • notes mint only in a community of two or more independent participants (own metering point).
+//    The format carries no grid-operator id yet, so each battery is placed behind its own point:
+//    one battery = one household. A community with one battery stores and reports, mints nothing.
+//
 // Keys and state live outside the repository: ~/.secrets/exergy_pilot_devices.json.
 //
 // Plain ethers, no Hardhat, so it runs on a small server every hour:
@@ -33,8 +41,9 @@ const DEPLOYMENTS = process.env.DEPLOYMENTS_DIR ?? path.resolve(import.meta.dirn
 const PACKET_ABI = "(bytes32 deviceId,uint256 kwhAmount,uint64 timestamp,uint256 storageCapacity,uint8 chargeLevelPercent,uint8 sourceType,uint32 cumulativeCycles)";
 const ROUTER_ABI = [
   "function registerDevice(bytes32 deviceId, address vppAddress, bytes32 devicePubKeyHash)",
-  `function submitMeasurement(${PACKET_ABI} packet, bytes deviceSignature, bytes vppSignature)`,
-  "error InvalidDeviceSignature()", "error InvalidVPPSignature()", "error DuplicateMeasurement(bytes32)",
+  `function submitMeasurementWithOrigin(${PACKET_ABI} packet, uint256 kwhFromMembers, bytes deviceSignature, bytes vppSignature)`,
+  "function setDeviceMeteringPoint(bytes32 deviceId, bytes32 meteringPoint)",
+  "error MembersEnergyExceedsCharge(uint256,uint256)", "error InvalidDeviceSignature()", "error InvalidVPPSignature()", "error DuplicateMeasurement(bytes32)",
   "error TimestampOutOfWindow()", "error SourceNotAllowed(uint8)", "error DeviceNotRegistered(bytes32)",
 ];
 const GOV_ABI = ["function registerVPP(bytes32 vppId, address operatorAddress)"];
@@ -57,6 +66,7 @@ const sourceFor = (battery: string) => (battery.toLowerCase().includes("bickenba
 interface Device {
   deviceKey: string;
   registered: boolean;
+  pointSet?: boolean;    // placed behind its metering point (independence rule)
   lastTime?: string;     // last reading consumed
   chainHeldKwh?: number; // what the chain believes the battery holds
   sessions: number;      // completed charging sessions = cycles
@@ -122,6 +132,10 @@ async function main() {
         console.log(`  register battery ${name} (${deviceId.slice(0, 12)}…)`);
         if (!DRY) { await (await router.registerDevice(deviceId, cloud.address, devicePubKeyHash(dev.deviceKey))).wait(); dev.registered = true; save(); }
       }
+      if (!dev.pointSet) {
+        console.log(`  metering point for ${name}`);
+        if (!DRY) { await (await router.setDeviceMeteringPoint(deviceId, ethers.id(`pilot-point:${s.name}:${name}`))).wait(); dev.pointSet = true; save(); }
+      }
       const device = new ethers.Wallet(dev.deviceKey);
 
       const after = dev.lastTime ? `&time=gt.${encodeURIComponent(dev.lastTime)}` : "";
@@ -172,14 +186,15 @@ async function main() {
           packet.deviceId, packet.kwhAmount, packet.timestamp, packet.storageCapacity,
           packet.chargeLevelPercent, packet.sourceType, packet.cumulativeCycles]]));
         const devSig = await device.signMessage(ethers.getBytes(pHash));
+        const kwhFromMembers = 0n; // no allocation data in the pilot format yet
         const vppSig = await cloud.signMessage(ethers.getBytes(ethers.keccak256(
-          ethers.AbiCoder.defaultAbiCoder().encode(["bytes32", "bytes"], [pHash, devSig]))));
+          ethers.AbiCoder.defaultAbiCoder().encode(["bytes32", "bytes", "uint256"], [pHash, devSig, kwhFromMembers]))));
 
         const label = `  ${name} ${r.time} ${pct}% held ${held.toFixed(1)} kWh new ${kwhAmount.toFixed(1)} cycles ${reported}`;
         if (DRY) { console.log("DRY" + label); }
         else {
           try {
-            await (await router.submitMeasurement(packet, devSig, vppSig)).wait();
+            await (await router.submitMeasurementWithOrigin(packet, kwhFromMembers, devSig, vppSig)).wait();
             console.log("✓" + label);
           } catch (e: any) {
             console.log("✗" + label + " — " + (e.shortMessage ?? e.message));

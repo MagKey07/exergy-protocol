@@ -247,6 +247,31 @@ contract MintingEngine is
         uint256 storageCapacity,
         uint8 chargeLevelPercent
     ) external override whenNotPaused nonReentrant returns (uint256 tokensMinted) {
+        return _commit(deviceId, vppAddress, kwhAmount, 0, cumulativeCycles, storageCapacity, chargeLevelPercent);
+    }
+
+    /// @inheritdoc IMintingEngine
+    function commitVerifiedEnergyWithOrigin(
+        bytes32 deviceId,
+        address vppAddress,
+        uint256 kwhAmount,
+        uint256 kwhNotMinting,
+        uint32 cumulativeCycles,
+        uint256 storageCapacity,
+        uint8 chargeLevelPercent
+    ) external override whenNotPaused nonReentrant returns (uint256 tokensMinted) {
+        return _commit(deviceId, vppAddress, kwhAmount, kwhNotMinting, cumulativeCycles, storageCapacity, chargeLevelPercent);
+    }
+
+    function _commit(
+        bytes32 deviceId,
+        address vppAddress,
+        uint256 kwhAmount,
+        uint256 kwhNotMinting,
+        uint32 cumulativeCycles,
+        uint256 storageCapacity,
+        uint8 chargeLevelPercent
+    ) private returns (uint256 tokensMinted) {
         if (msg.sender != oracleRouter) revert NotOracleRouter();
         if (vppAddress == address(0)) revert ZeroAddress();
 
@@ -302,7 +327,11 @@ contract MintingEngine is
         uint256 lastHeld = _deviceCycleState[deviceId].lastReportedEnergy;
         if (lastHeld > highWater) highWater = lastHeld; // devices connected before this rule
         uint256 growthKwh = nowHeld > highWater ? nowHeld - highWater : 0;
-        uint256 mintKwh = growthKwh < kwhAmount ? growthKwh : kwhAmount;
+        // Only the new energy of this charge may mint: what came from another participant
+        // already stands behind their notes (decided 04.11.2026). It still lifts the
+        // high-water mark below, so the same kWh can never mint later either.
+        uint256 newKwh = kwhNotMinting < kwhAmount ? kwhAmount - kwhNotMinting : 0;
+        uint256 mintKwh = growthKwh < newKwh ? growthKwh : newKwh;
 
         uint256 era = currentEra;
         uint256 rate = _rateForEra(era);

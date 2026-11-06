@@ -83,6 +83,41 @@ export async function signVpp(
   return vppCloud.signMessage(ethers.getBytes(hash));
 }
 
+/**
+ * VPP cosignature for `submitMeasurementWithOrigin`: the community also attests how much
+ * of the charge came from other participants.
+ * `keccak256(abi.encode(packetHash, deviceSignature, kwhFromMembers))`.
+ */
+export async function signVppWithOrigin(
+  packet: MeasurementPacket,
+  deviceSignature: string,
+  kwhFromMembers: bigint,
+  vppCloud: Wallet | HDNodeWallet
+): Promise<string> {
+  const inner = ethers.AbiCoder.defaultAbiCoder().encode(
+    ["bytes32", "bytes", "uint256"],
+    [packetHash(packet), deviceSignature, kwhFromMembers]
+  );
+  return vppCloud.signMessage(ethers.getBytes(ethers.keccak256(inner)));
+}
+
+/**
+ * Notes mint only in a community of two or more independent participants (04.11.2026).
+ * Puts `deviceId` behind its own metering point and registers a second participant
+ * behind another one, so the VPP's community counts two.
+ */
+export async function formCommunity(
+  oracleRouter: any,
+  registrar: any,
+  vppAddress: string,
+  deviceId: string
+): Promise<void> {
+  await oracleRouter.connect(registrar).setDeviceMeteringPoint(deviceId, ethers.id(`point:${deviceId}`));
+  const neighbour = ethers.id(`neighbour:${deviceId}`);
+  await oracleRouter.connect(registrar).registerDevice(neighbour, vppAddress, ethers.id("unused-key"));
+  await oracleRouter.connect(registrar).setDeviceMeteringPoint(neighbour, ethers.id(`point:${neighbour}`));
+}
+
 /** Convenience for tests: build a default packet around overrides. */
 export function makePacket(overrides: Partial<MeasurementPacket> = {}): MeasurementPacket {
   return {

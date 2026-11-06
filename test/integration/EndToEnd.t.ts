@@ -32,6 +32,7 @@ import {
   packetHash,
   signDevice,
   signVpp,
+  formCommunity,
 } from "../helpers/signatures";
 
 const KWH = ONE_TOKEN; // kWh are 18-decimal on chain
@@ -51,6 +52,7 @@ describe("Integration: end-to-end happy path", () => {
     await governance.connect(governor).registerVPP(vppId, vppCloud.address);
     expect(await governance.isActiveVPPOperator(vppCloud.address)).to.equal(true);
     await oracleRouter.connect(governor).registerDevice(deviceId, vppCloud.address, devicePubKeyHash(device));
+    await formCommunity(oracleRouter, governor, vppCloud.address, deviceId);
 
     // ----- Step 2 + 3: dual-signed packet → OracleRouter verifies ----------
     const t0 = await time.latest();
@@ -166,6 +168,7 @@ describe("Integration: end-to-end happy path", () => {
     await sys.oracleRouter
       .connect(sys.governor)
       .registerDevice(deviceId, vppCloud.address, devicePubKeyHash(device));
+    await formCommunity(sys.oracleRouter, sys.governor, vppCloud.address, deviceId);
 
     let lastTimestamp = Math.floor(Date.now() / 1000);
     let totalMinted = 0n;

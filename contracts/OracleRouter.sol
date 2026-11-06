@@ -104,8 +104,24 @@ contract OracleRouter is
     /// @dev Appended in the source-check upgrade; takes one slot from `__gap`.
     mapping(uint8 => bool) private _allowedSource;
 
+    /// @notice Notes are minted only inside a community of at least this many independent
+    ///         participants (decided 04.11.2026). A lone battery stores, reports and lifts its
+    ///         high-water mark, but mints nothing.
+    uint256 public constant MIN_INDEPENDENT_PARTICIPANTS = 2;
+
+    /// @notice deviceId → metering point at the grid operator (hashed id, e.g. a German MaLo).
+    ///         Independent = own metering point: all batteries behind one point are one participant.
+    /// @dev Appended in the independence upgrade; with the two mappings below takes three slots from `__gap`.
+    mapping(bytes32 => bytes32) private _deviceMeteringPoint;
+
+    /// @notice vpp → metering point → active devices behind it.
+    mapping(address => mapping(bytes32 => uint256)) private _activeDevicesAtPoint;
+
+    /// @notice vpp → number of distinct metering points with at least one active device.
+    mapping(address => uint256) private _independentParticipants;
+
     /// @dev Reserved storage gap for upgradeable layout safety.
-    uint256[38] private __gap;
+    uint256[35] private __gap;
 
     // ---------------------------------------------------------------------
     // Initializer
@@ -186,8 +202,39 @@ contract OracleRouter is
     function setDeviceActive(bytes32 deviceId, bool active) external override onlyRole(DEVICE_REGISTRAR_ROLE) {
         DeviceRecord storage rec = _devices[deviceId];
         if (rec.vppAddress == address(0)) revert DeviceNotRegistered(deviceId);
+        if (rec.active != active) {
+            bytes32 point = _deviceMeteringPoint[deviceId];
+            if (active) _addToPoint(rec.vppAddress, point);
+            else _removeFromPoint(rec.vppAddress, point);
+        }
         rec.active = active;
         emit DeviceActiveStatusChanged(deviceId, active);
+    }
+
+    /// @notice Place a device behind its metering point at the grid operator. Today Key Energy
+    ///         sets it by hand from the grid-operator registration; on mainnet an independent
+    ///         verifier signs it as part of admission by community vote (MAINNET_HARDENING E.1).
+    function setDeviceMeteringPoint(bytes32 deviceId, bytes32 meteringPoint) external onlyRole(DEVICE_REGISTRAR_ROLE) {
+        DeviceRecord storage rec = _devices[deviceId];
+        if (rec.vppAddress == address(0)) revert DeviceNotRegistered(deviceId);
+        bytes32 old = _deviceMeteringPoint[deviceId];
+        if (old == meteringPoint) return;
+        if (rec.active) {
+            _removeFromPoint(rec.vppAddress, old);
+            _addToPoint(rec.vppAddress, meteringPoint);
+        }
+        _deviceMeteringPoint[deviceId] = meteringPoint;
+        emit DeviceMeteringPointSet(deviceId, meteringPoint);
+    }
+
+    function _addToPoint(address vpp, bytes32 point) private {
+        if (point == bytes32(0)) return;
+        if (_activeDevicesAtPoint[vpp][point]++ == 0) _independentParticipants[vpp]++;
+    }
+
+    function _removeFromPoint(address vpp, bytes32 point) private {
+        if (point == bytes32(0)) return;
+        if (--_activeDevicesAtPoint[vpp][point] == 0) _independentParticipants[vpp]--;
     }
 
     /// @notice Bind a device to its energy source. Once bound, packets carrying new
@@ -219,11 +266,46 @@ contract OracleRouter is
     ///      not a replacement; if this role were granted to an attacker, they
     ///      could only pass through packets that are ALREADY validly dual-signed
     ///      by registered devices and VPPs.
+    /// @dev Kept for the deployed adapters and simulators: the VPP signature binds no
+    ///      statement about energy from other participants, so it is read as "none".
+    ///      MAINNET BLOCKER (MAINNET_HARDENING E.1): remove, so every packet carries the
+    ///      community's attestation.
     function submitMeasurement(
         MeasurementPacket calldata packet,
         bytes calldata deviceSignature,
         bytes calldata vppSignature
     ) external override whenNotPaused onlyRole(CHAINLINK_RELAYER_ROLE) {
+        bytes32 packetHash = keccak256(abi.encode(packet));
+        _submit(packet, packetHash, 0, deviceSignature, keccak256(abi.encode(packetHash, deviceSignature)), vppSignature);
+    }
+
+    /// @inheritdoc IOracleRouter
+    function submitMeasurementWithOrigin(
+        MeasurementPacket calldata packet,
+        uint256 kwhFromMembers,
+        bytes calldata deviceSignature,
+        bytes calldata vppSignature
+    ) external override whenNotPaused onlyRole(CHAINLINK_RELAYER_ROLE) {
+        bytes32 packetHash = keccak256(abi.encode(packet));
+        _submit(
+            packet,
+            packetHash,
+            kwhFromMembers,
+            deviceSignature,
+            keccak256(abi.encode(packetHash, deviceSignature, kwhFromMembers)),
+            vppSignature
+        );
+    }
+
+    function _submit(
+        MeasurementPacket calldata packet,
+        bytes32 packetHash,
+        uint256 kwhFromMembers,
+        bytes calldata deviceSignature,
+        bytes32 vppPayloadHash,
+        bytes calldata vppSignature
+    ) private {
+        if (kwhFromMembers > packet.kwhAmount) revert MembersEnergyExceedsCharge(kwhFromMembers, packet.kwhAmount);
         DeviceRecord memory rec = _devices[packet.deviceId];
         if (rec.vppAddress == address(0)) revert DeviceNotRegistered(packet.deviceId);
         if (!rec.active) revert DeviceInactive(packet.deviceId);
@@ -244,7 +326,6 @@ contract OracleRouter is
         if (block.timestamp > packet.timestamp + MAX_BACKDATE_SECONDS) revert TimestampOutOfWindow();
 
         // Replay protection.
-        bytes32 packetHash = keccak256(abi.encode(packet));
         if (_processed[packetHash]) revert DuplicateMeasurement(packetHash);
 
         // ---- Device signature verification ----
@@ -257,9 +338,8 @@ contract OracleRouter is
         }
 
         // ---- VPP cloud signature verification ----
-        // VPP cloud signs the (packet, deviceSignature) tuple — this binds the
-        // VPP attestation to the specific device signature it validated.
-        bytes32 vppPayloadHash = keccak256(abi.encode(packetHash, deviceSignature));
+        // VPP cloud signs the (packet, deviceSignature[, kwhFromMembers]) tuple — this binds
+        // the VPP attestation to the specific device signature it validated.
         bytes32 vppDigest = vppPayloadHash.toEthSignedMessageHash();
         address recoveredVPP = vppDigest.recover(vppSignature);
         if (recoveredVPP != rec.vppAddress) revert InvalidVPPSignature();
@@ -272,11 +352,20 @@ contract OracleRouter is
         // autonomous Proof-of-Wear check (Blueprint §5.6). Anomaly LOGIC lives in the
         // engine — not here — per CONCEPT_AUDIT D-7. This router does NOT short-circuit
         // those checks; it just shuttles the signed packet fields through.
+        // Origin rules (decided 04.11.2026): energy from other participants mints nothing,
+        // and nothing mints while the community has fewer than two independent participants.
+        // A device not yet placed behind a metering point is not a counted participant either.
+        bool communityTooSmall = _deviceMeteringPoint[packet.deviceId] == bytes32(0)
+            || _independentParticipants[rec.vppAddress] < MIN_INDEPENDENT_PARTICIPANTS;
+        uint256 kwhNotMinting = communityTooSmall ? packet.kwhAmount : kwhFromMembers;
+        if (kwhNotMinting > 0) emit EnergyNotMinting(packet.deviceId, rec.vppAddress, kwhNotMinting, communityTooSmall);
+
         uint256 epoch = mintingEngine.currentEpoch();
-        mintingEngine.commitVerifiedEnergy(
+        mintingEngine.commitVerifiedEnergyWithOrigin(
             packet.deviceId,
             rec.vppAddress,
             packet.kwhAmount,
+            kwhNotMinting,
             packet.cumulativeCycles,
             packet.storageCapacity,
             packet.chargeLevelPercent
@@ -310,6 +399,16 @@ contract OracleRouter is
     function deviceSource(bytes32 deviceId) external view returns (bool bound, uint8 sourceType) {
         uint8 v = _deviceSourcePlusOne[deviceId];
         return (v != 0, v == 0 ? 0 : v - 1);
+    }
+
+    /// @notice The metering point a device sits behind (0 = not set yet).
+    function deviceMeteringPoint(bytes32 deviceId) external view returns (bytes32) {
+        return _deviceMeteringPoint[deviceId];
+    }
+
+    /// @notice Independent participants (distinct metering points with an active device) of a VPP.
+    function independentParticipants(address vppAddress) external view returns (uint256) {
+        return _independentParticipants[vppAddress];
     }
 
     /// @notice Whether stored energy from this source may mint notes.
