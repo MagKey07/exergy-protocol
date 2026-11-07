@@ -384,20 +384,11 @@ V0 (direct contract submission, no adapter) remains supported indefinitely as
 a fallback. A deployment is V1 if its `CHAINLINK_RELAYER_ROLE` is held only by
 adapters and not by direct EOAs (per `MAINNET_HARDENING.md`).
 
-## Smallest unit — `erg`
+## Smallest unit — `key`
 
-`1 XRGY = 10^18 ergs`. Decided 2026-05-09 by Mag.
+`1 XRGY = 10^18 key`. Decided 2026-05-19 by Mag; replaces the earlier `erg` (2026-05-09), which is withdrawn.
 
-Rationale:
-- **Sound-symmetric with EXergy**: brand cohesion (BTC↔satoshi, ETH↔wei, XRGY↔erg)
-- **Real physical unit**: erg = CGS unit of energy (1 erg = 10⁻⁷ joule), gives the protocol thematic legitimacy with physicists/engineers
-- **Unique**: no collision with existing crypto unit naming
+- `1 key` = atomic settlement unit (the 18th decimal of a note)
 
-Practical denominations:
-- `1 XRGY = 1,000,000,000,000,000,000 ergs` (1e18)
-- `1 mega-erg = 1,000,000,000,000,000 ergs` (1e15) ≈ 0.001 XRGY
-- `1 giga-erg = 1,000,000,000 ergs` (1e9) ≈ 1 nano-XRGY
-- `1 erg` = atomic settlement unit
-
-Display convention: dashboards show whole `XRGY` by default; CLI tools may surface `ergs` for raw on-chain values.
+Display convention: dashboards show whole `XRGY` by default; CLI tools may surface `key` for raw on-chain values.
 
