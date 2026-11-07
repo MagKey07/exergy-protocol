@@ -216,3 +216,6 @@ This deployment may proceed only after every box above is ticked and every blank
 **Mainnet deploy tx hash (filled in last):** `__________________________________`
 **Mainnet deploy block number:** `_____________`
 **Mainnet deploy UTC timestamp:** `_____________`
+
+
+- [ ] **Имя младшей доли ноты (Маг, 07.11.2026): `key` заменить до мейннета.** Причина: в крипте «key» = ключ подписи (private key), «пришли 1000 key» путает в той же среде, где переводят ноты. Сейчас `key` стоит в `PROTOCOL_SPEC.md` (§ Smallest unit) и `05_System/CORE_KERNEL.md:80`; новое имя решает Маг, поменять в обоих.
