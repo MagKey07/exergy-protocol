@@ -87,7 +87,7 @@ export function Overview(): JSX.Element {
           className="lg:col-span-6"
           label="Notes in circulation"
           value={formatToken(stats.totalSupply)}
-          unit={stats.tokenSymbol ?? "XRGY"}
+          unit="notes"
           size="hero"
           hint="Minted only from verified stored energy. No pre-mine."
           loading={statsLoading}

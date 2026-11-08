@@ -100,7 +100,7 @@ export function Tokenomics(): JSX.Element {
           className="lg:col-span-4"
           label="Notes minted"
           value={formatToken(stats.totalSupply)}
-          unit="XRGY"
+          unit="notes"
           hint={
             era.nextHalvingAtSupply !== undefined
               ? `Next halving at ${era.nextHalvingAtSupply.toLocaleString()} notes`
@@ -251,8 +251,7 @@ export function Tokenomics(): JSX.Element {
           <div className="stat-label mb-2">What halving does</div>
           <p className="text-sm text-fg-muted leading-relaxed">
             Halving is triggered by the number of notes minted, not by time. After each halving the
-            same stored kilowatt-hour mints half as many notes, so new notes enter with more energy
-            behind them. The floating index follows the real stock: it rises when the network stores
+            same stored kilowatt-hour mints half as many notes. The floating index follows the real stock: it rises when the network stores
             more than it uses, and falls when it uses more than it stores.
           </p>
         </div>

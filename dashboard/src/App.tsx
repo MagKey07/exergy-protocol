@@ -24,7 +24,8 @@ export default function App(): JSX.Element {
           <Route path="/my-vpp" element={<MyVPP />} />
           <Route path="/devices" element={<Devices />} />
           <Route path="/settlement" element={<Settlement />} />
-          <Route path="/tokenomics" element={<Tokenomics />} />
+          <Route path="/note-economics" element={<Tokenomics />} />
+          <Route path="/tokenomics" element={<Navigate to="/note-economics" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

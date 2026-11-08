@@ -61,8 +61,8 @@ export function Settlement(): JSX.Element {
       <>
         <PageHeader
           eyebrow="Settlement"
-          title="Settle in $XRGY"
-          subtitle="Operators pay participants for delivered energy in the same unit they minted from. P2P stays within one VPP; cross-VPP routes through Settlement.sol with a 0.25% protocol fee."
+          title="Settle in notes"
+          subtitle="Participants pay each other in notes for energy delivered. Energy for a note moves only inside one community; the note itself can go to another community. Settlement.sol charges a 0.25% protocol fee."
         />
         <EmptyState
           title="Connect a wallet to settle"
@@ -77,7 +77,7 @@ export function Settlement(): JSX.Element {
     <>
       <PageHeader
         eyebrow="Settlement"
-        title="Settle in $XRGY"
+        title="Settle in notes"
         subtitle="Pay participants in the energy they helped store. Protocol fee 0.25%, paid on top of the principal, to the Key Energy treasury."
       />
 
@@ -87,7 +87,7 @@ export function Settlement(): JSX.Element {
         <div className="panel px-5 py-4 lg:col-span-4">
           <div className="stat-label">Available balance</div>
           <div className="stat-value mt-2">{formatToken(balance as bigint | undefined)}</div>
-          <div className="text-xs text-fg-subtle mt-1">XRGY · {shortAddress(address)}</div>
+          <div className="text-xs text-fg-subtle mt-1">notes · {shortAddress(address)}</div>
         </div>
         <div className="panel px-5 py-4 lg:col-span-4">
           <div className="stat-label">Settlement fee</div>
@@ -122,7 +122,7 @@ export function Settlement(): JSX.Element {
       </Card>
 
       <p className="mt-6 max-w-3xl text-xs leading-relaxed text-fg-subtle">
-        <span className="text-fg-muted">Why no burn:</span> when energy is consumed, $XRGY transfers
+        <span className="text-fg-muted">Why no burn:</span> when energy is consumed, notes transfer
         to the energy provider — it keeps circulating like money. The floating index self-regulates
         as <code className="font-mono">totalVerifiedEnergyInStorage</code> moves with physical
         reality. Coupons get burned; money does not.
@@ -272,7 +272,7 @@ function SettlementForm({ kind, feeBps, balance }: SettlementFormProps): JSX.Ele
           />
         </Field>
 
-        <Field label="Amount" hint="Whole or fractional $XRGY.">
+        <Field label="Amount" hint="Whole or fractional notes.">
           <div className="relative">
             <Input
               type="number"
@@ -283,7 +283,7 @@ function SettlementForm({ kind, feeBps, balance }: SettlementFormProps): JSX.Ele
               onChange={(e) => setAmount(e.target.value)}
             />
             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-fg-subtle">
-              XRGY
+              notes
             </span>
           </div>
         </Field>
@@ -308,17 +308,17 @@ function SettlementForm({ kind, feeBps, balance }: SettlementFormProps): JSX.Ele
 
         <PreviewRow
           label="Recipient receives"
-          value={amountWei !== undefined ? `${formatToken(amountWei)} XRGY` : "—"}
+          value={amountWei !== undefined ? `${formatToken(amountWei)} notes` : "—"}
           emphasis
         />
         <PreviewRow
           label={`Fee (${formatBps(feeBps)}, on top)`}
-          value={feePreview !== undefined ? `${formatToken(feePreview)} XRGY` : "—"}
+          value={feePreview !== undefined ? `${formatToken(feePreview)} notes` : "—"}
         />
         <div className="hairline" />
         <PreviewRow
           label="Total debited from you"
-          value={totalDebit !== undefined ? `${formatToken(totalDebit)} XRGY` : "—"}
+          value={totalDebit !== undefined ? `${formatToken(totalDebit)} notes` : "—"}
           emphasis
         />
         <PreviewRow
@@ -342,7 +342,7 @@ function SettlementForm({ kind, feeBps, balance }: SettlementFormProps): JSX.Ele
 
         {insufficient && (
           <div className="text-xs text-danger">
-            Insufficient $XRGY balance — fee is paid on top of the principal.
+            Insufficient note balance — fee is paid on top of the principal.
           </div>
         )}
         {outsidePerimeter && (

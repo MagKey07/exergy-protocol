@@ -122,7 +122,7 @@ export function Devices(): JSX.Element {
       <PageHeader
         eyebrow="Registry"
         title="Devices"
-        subtitle="Every battery system whose readings can mint $XRGY. Each entry is bound to a VPP cloud-signer and a device-side ECDSA key — measurements without both signatures are rejected at the contract level."
+        subtitle="Every battery system whose readings can mint notes. Each entry is bound to a VPP cloud-signer and a device-side ECDSA key — measurements without both signatures are rejected at the contract level."
       />
 
       <ContractsBanner />

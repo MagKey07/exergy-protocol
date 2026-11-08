@@ -91,9 +91,9 @@ export function MyVPP(): JSX.Element {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 mb-4">
         <Stat
           className="lg:col-span-6"
-          label="$XRGY balance"
+          label="Note balance"
           value={formatToken(balance as bigint | undefined)}
-          unit="XRGY"
+          unit="notes"
           size="hero"
           hint="Treasury for this VPP. Settles grid bills + cross-VPP imports."
           loading={balLoading}

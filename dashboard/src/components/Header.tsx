@@ -20,7 +20,7 @@ const navItems: ReadonlyArray<{ to: string; label: string; end?: boolean }> = [
   { to: "/my-vpp", label: "My VPP" },
   { to: "/devices", label: "Devices" },
   { to: "/settlement", label: "Settlement" },
-  { to: "/tokenomics", label: "Note economics" },
+  { to: "/note-economics", label: "Note economics" },
 ];
 
 export function Header(): JSX.Element {
